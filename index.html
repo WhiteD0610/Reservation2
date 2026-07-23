@@ -44,13 +44,13 @@
   }
   .field select{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' stroke='%235c6b7a' stroke-width='2' fill='none'/></svg>");background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;}
   .field input:focus, .field select:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent);}
+  .req{color:var(--full);font-weight:700;}
   .btn{
     width:100%;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:600;
     background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;
   }
   .btn:disabled{background:#a9bccb;cursor:default;}
   .btn.ghost{background:#fff;color:var(--accent);border:1px solid var(--line);}
-  .btn.danger{background:#fff;color:var(--full);border:1px solid var(--taken);}
   .btn.sm{padding:8px 12px;font-size:13px;width:auto;}
 
   .quota-note{
@@ -130,6 +130,35 @@
   }
   .slot.disabled{opacity:.4;cursor:default;}
 
+  /* --- フィラメント選択（写真つきカード） --- */
+  .fpick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  @media(max-width:520px){ .fpick-grid{grid-template-columns:repeat(3,1fr);} }
+  .fpick{
+    border:1px solid var(--line);border-radius:10px;background:#fff;padding:6px;
+    cursor:pointer;text-align:center;position:relative;overflow:hidden;
+  }
+  .fpick.sel{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent) inset;}
+  .fpick.busy{opacity:.45;cursor:default;}
+  .fpick-img{
+    width:100%;aspect-ratio:1/1;border-radius:8px;overflow:hidden;background:#f3f6f8;
+    display:flex;align-items:center;justify-content:center;margin-bottom:5px;
+  }
+  .fpick-img img{width:100%;height:100%;object-fit:cover;display:block;}
+  .fpick-swatch{width:56%;height:56%;border-radius:50%;border:1px solid rgba(0,0,0,.12);}
+  .fpick-name{
+    font-size:11px;font-weight:600;line-height:1.3;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .fpick-sub{font-size:10px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .fpick-badge{
+    position:absolute;top:8px;left:8px;background:rgba(31,39,51,.72);color:#fff;
+    font-size:9px;padding:1px 5px;border-radius:5px;
+  }
+  .fpick-busy{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(250,231,229,.82);color:var(--full);font-size:10px;font-weight:700;text-align:center;padding:4px;
+  }
+
   /* --- 予約サマリ --- */
   .summary{font-size:14px;background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
   .summary b{color:var(--accent);}
@@ -140,10 +169,15 @@
   .fil-group{margin-bottom:18px;}
   .fil-group h4{font-size:13px;margin:0 0 8px;color:var(--accent);font-weight:600;}
   .fil-item{
-    display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);
+    display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--line);
     border-radius:10px;margin-bottom:6px;background:#fff;
   }
-  .fil-chip{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.15);flex:0 0 auto;}
+  .fil-thumb{
+    width:42px;height:42px;border-radius:8px;flex:0 0 auto;overflow:hidden;background:#f3f6f8;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .fil-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .fil-chip{width:20px;height:20px;border-radius:50%;border:1px solid rgba(0,0,0,.15);}
   .fil-body{flex:1 1 auto;min-width:0;}
   .fil-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .fil-meta{font-size:11px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -156,6 +190,13 @@
   .fil-form{border:1px dashed var(--line);border-radius:10px;padding:12px;margin-top:8px;background:#fbfcfd;}
   .fil-form .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
   @media(max-width:420px){ .fil-form .grid2{grid-template-columns:1fr;} }
+  .photo-row{display:flex;gap:10px;align-items:center;}
+  .photo-prev{
+    width:64px;height:64px;border-radius:10px;background:#f3f6f8;flex:0 0 auto;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--ink-soft);
+  }
+  .photo-prev img{width:100%;height:100%;object-fit:cover;display:block;}
+  .photo-btns{display:flex;flex-direction:column;gap:6px;}
 
   /* --- モーダル --- */
   .modal-overlay{
@@ -218,9 +259,9 @@
     <div class="grid7" id="calBody" style="margin-top:4px;"></div>
     <div id="calLoading" class="loading hidden" style="margin-top:10px;"><span class="spin"></span>混み状況を読み込み中…</div>
     <div class="legend">
-      <span><b class="mk-free" style="color:var(--free);">〇</b> 空きあり</span>
-      <span><b class="mk-some" style="color:var(--some);">△</b> やや混雑</span>
-      <span><b class="mk-full" style="color:var(--full);">✕</b> 混雑</span>
+      <span><b style="color:var(--free);">〇</b> 空きあり</span>
+      <span><b style="color:var(--some);">△</b> やや混雑</span>
+      <span><b style="color:var(--full);">✕</b> 混雑</span>
       <span><b style="color:#b7c0cb;">🔒</b> 未解放</span>
     </div>
   </section>
@@ -240,15 +281,16 @@
     <h2>この内容で予約</h2>
     <div class="summary" id="reserveSummary"></div>
     <div class="field">
-      <label for="filSelect">使用するフィラメント</label>
-      <select id="filSelect"><option value="">選択してください</option></select>
+      <label>使用するフィラメント <span class="req">*</span></label>
+      <div id="filPicker" class="fpick-grid"></div>
+      <div class="hint" id="filPickHint"></div>
     </div>
     <div class="field">
-      <label for="passInput">キャンセル用パスワード</label>
+      <label for="passInput">キャンセル用パスワード <span class="req">*</span></label>
       <input id="passInput" type="password" placeholder="キャンセル時に使う合言葉" autocomplete="off">
     </div>
     <button class="btn" id="reserveBtn">予約する</button>
-    <div class="hint">※ 同じ時間に同じフィラメントを別の機械では使えません（使用中のものは選べません）。キャンセルは予約枠をもう一度タップし、このパスワードを入力します。大事なパスワードの使い回しは避けてください。</div>
+    <div class="hint">※ 同じ時間に同じフィラメントを別の機械では使えません。キャンセルは予約枠をもう一度タップし、このパスワードを入力します。大事なパスワードの使い回しは避けてください。</div>
   </section>
 </div>
 
@@ -295,7 +337,7 @@
 /* ============================================================
    設定: デプロイした GAS ウェブアプリの URL(/exec) をここに貼る
    ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwXjuFQuy1CeN0dt-MGj_lsx3O0XTJylGKXCUV0Ft07DH2lJKuVX30GQ7t0v_V44S0G/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbziU1OVAzFYhk-mNyVI3RLF1ypRsjJyGarELM0vWlHm5RXyAYa3Lk8L-OOoepNZJrLV/exec';
 
 /* ---- API 呼び出し ---- */
 async function api(payload){
@@ -315,9 +357,10 @@ const state = {
   monthCounts:{}, slotsPerDay:0,
   windowStart:null, windowEnd:null, serverToday:null,
   machines:[], openHour:0, closeHour:24, maxHours:2,
-  users:[], currentUser:'',
+  users:[],
   ownFilaments:[], sharedFilaments:[],
-  filamentBusy:{},              // {filamentId:[使用中の時間,...]} 選択日の全機械分
+  filamentBusy:{},
+  selectedFilamentId:'',
   selectedDate:null,
   selectedMachine:null,
   dayReservations:[],
@@ -326,6 +369,9 @@ const state = {
 
 const DOW = ['日','月','火','水','木','金','土'];
 const $ = id => document.getElementById(id);
+
+/* 予約者は常にプルダウンの実値を読む（状態のズレを防ぐ） */
+function currentUser(){ return ($('userSelect').value || '').trim(); }
 
 /* ---- ユーティリティ ---- */
 function pad(n){ return (n<10?'0':'')+n; }
@@ -348,21 +394,49 @@ function escapeHtml(s){
 }
 function allFilaments(){ return state.ownFilaments.concat(state.sharedFilaments); }
 function filamentById(id){ return allFilaments().find(f=>f.id===id) || null; }
+function filName(f){ return [f.material,f.color].filter(Boolean).join(' ') || f.label || ''; }
 
 let toastTimer=null;
 function toast(msg, isErr){
   const t=$('toast'); t.textContent=msg;
   t.className='show'+(isErr?' err':'');
   clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>{ t.className=''; }, 3000);
+  toastTimer=setTimeout(()=>{ t.className=''; }, 3200);
+}
+
+/* 色名やコードをCSSの色に。不明なら灰色 */
+function colorToCss(c){
+  const s=String(c).trim();
+  if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s)) return s;
+  const map={'白':'#ffffff','黒':'#222222','赤':'#d94b45','青':'#3a72c4','緑':'#3aa06a','黄':'#e3c04a',
+             '橙':'#e08a3c','オレンジ':'#e08a3c','紫':'#8f7ff0','灰':'#9aa5b1','グレー':'#9aa5b1',
+             'ピンク':'#e58fb0','透明':'#dfe7ee','クリア':'#dfe7ee','金':'#c9a227','銀':'#b9c0c7',
+             'white':'#ffffff','black':'#222222','red':'#d94b45','blue':'#3a72c4','green':'#3aa06a',
+             'yellow':'#e3c04a','orange':'#e08a3c','purple':'#8f7ff0','gray':'#9aa5b1','grey':'#9aa5b1'};
+  return map[s] || map[s.toLowerCase()] || '#c7d0d9';
 }
 
 /* ============================================================
    初期化
+   ※ イベント登録を最初に済ませてから通信する。
+     （読み込み中に予約者を選んでも取りこぼさないようにするため）
    ============================================================ */
 async function init(){
   $('dowRow').innerHTML = DOW.map((d,i)=>
     `<div class="dow ${i===0?'sun':''}${i===6?'sat':''}">${d}</div>`).join('');
+
+  // --- イベント登録（通信より先に行う） ---
+  $('prevM').onclick=()=>changeMonth(-1);
+  $('nextM').onclick=()=>changeMonth(1);
+  $('reserveBtn').onclick=doReserve;
+  $('userSelect').onchange=onUserChange;
+  $('openFilBtn').onclick=openFilModal;
+  $('filModalClose').onclick=()=>$('filModal').classList.add('hidden');
+  $('addOwnBtn').onclick=()=>showFilForm({owner:'own'});
+  $('addSharedBtn').onclick=()=>showFilForm({owner:'shared'});
+  $('cancelModalClose').onclick=closeCancelModal;
+  $('cancelModalExec').onclick=execCancel;
+  $('cancelModal').addEventListener('click', e=>{ if(e.target.id==='cancelModal') closeCancelModal(); });
 
   const now=new Date();
   state.viewYear=now.getFullYear();
@@ -380,19 +454,6 @@ async function init(){
   await loadUsers();
   renderMachineTabs();
   await loadMonth();
-
-  $('prevM').onclick=()=>changeMonth(-1);
-  $('nextM').onclick=()=>changeMonth(1);
-  $('reserveBtn').onclick=doReserve;
-  $('userSelect').onchange=onUserChange;
-  $('openFilBtn').onclick=openFilModal;
-  $('filModalClose').onclick=()=>$('filModal').classList.add('hidden');
-  $('addOwnBtn').onclick=()=>showFilForm({owner:'own'});
-  $('addSharedBtn').onclick=()=>showFilForm({owner:'shared'});
-  $('cancelModalClose').onclick=closeCancelModal;
-  $('cancelModalExec').onclick=execCancel;
-  $('cancelModal').addEventListener('click', e=>{ if(e.target.id==='cancelModal') closeCancelModal(); });
-  $('filSelect').onchange=()=>{};
 }
 
 /* ---- 予約者一覧 ---- */
@@ -411,22 +472,20 @@ async function loadUsers(){
   const saved = localStorage.getItem('resv_user') || '';
   sel.innerHTML = '<option value="">選択してください</option>' +
     state.users.map(u=>`<option value="${escapeHtml(u)}"${u===saved?' selected':''}>${escapeHtml(u)}</option>`).join('');
-  if(saved && state.users.includes(saved)){
-    state.currentUser = saved;
-    await onUserChange();
-  }
+  if(saved && state.users.includes(saved)) await onUserChange();
 }
 
 async function onUserChange(){
-  state.currentUser = $('userSelect').value;
-  if(state.currentUser) localStorage.setItem('resv_user', state.currentUser);
+  const name=currentUser();
+  if(name) localStorage.setItem('resv_user', name);
+  state.selectedFilamentId='';
   await Promise.all([refreshQuota(), loadFilaments()]);
-  renderFilamentSelect();
+  renderFilPicker();
 }
 
 /* ---- 残り予約可能枠 ---- */
 async function refreshQuota(){
-  const name=state.currentUser;
+  const name=currentUser();
   const el=$('quotaNote');
   if(!name){ el.classList.add('hidden'); return; }
   try{
@@ -441,8 +500,10 @@ async function refreshQuota(){
 
 /* ---- フィラメント一覧 ---- */
 async function loadFilaments(){
+  const name=currentUser();
+  if(!name){ state.ownFilaments=[]; state.sharedFilaments=[]; return; }
   try{
-    const d = await api({action:'listFilaments', name:state.currentUser});
+    const d = await api({action:'listFilaments', name:name});
     state.ownFilaments = d.own || [];
     state.sharedFilaments = d.shared || [];
   }catch(e){
@@ -457,32 +518,47 @@ function isFilamentBusy(fid){
   return state.selectedHours.some(h => busy.indexOf(h) >= 0);
 }
 
-function renderFilamentSelect(){
-  const sel=$('filSelect');
-  const prev=sel.value;
-  if(!state.currentUser){
-    sel.innerHTML='<option value="">先に予約者を選んでください</option>';
-    return;
+/* ---- フィラメント選択（写真つきカード） ---- */
+function fpickCard(f, isShared){
+  const busy=isFilamentBusy(f.id);
+  const sel=(state.selectedFilamentId===f.id);
+  const img = f.photo
+    ? `<img src="${f.photo}" alt="">`
+    : `<span class="fpick-swatch" style="background:${escapeHtml(colorToCss(f.color))}"></span>`;
+  return `<div class="fpick${sel?' sel':''}${busy?' busy':''}" ${busy?'':`data-fid="${escapeHtml(f.id)}"`}>`+
+      `<div class="fpick-img">${img}</div>`+
+      (isShared?`<span class="fpick-badge">共用</span>`:'')+
+      `<div class="fpick-name">${escapeHtml(filName(f))}</div>`+
+      (f.note?`<div class="fpick-sub">${escapeHtml(f.note)}</div>`:'')+
+      (busy?`<div class="fpick-busy">同時間<br>使用中</div>`:'')+
+    `</div>`;
+}
+
+function renderFilPicker(){
+  const box=$('filPicker'), hint=$('filPickHint');
+  if(!currentUser()){
+    box.innerHTML=`<div class="empty-note" style="grid-column:1/-1;">先に予約者を選んでください。</div>`;
+    hint.textContent=''; return;
   }
-  const mk=(f)=>{
-    const busy=isFilamentBusy(f.id);
-    const meta=[f.material,f.color].filter(Boolean).join('・');
-    const txt=f.label + (meta?`（${meta}）`:'') + (busy?' ※同時間に使用中':'');
-    return `<option value="${escapeHtml(f.id)}"${busy?' disabled':''}>${escapeHtml(txt)}</option>`;
-  };
-  let html='<option value="">選択してください</option>';
-  if(state.ownFilaments.length){
-    html+=`<optgroup label="自分のフィラメント">${state.ownFilaments.map(mk).join('')}</optgroup>`;
+  const own=state.ownFilaments, sh=state.sharedFilaments;
+  if(own.length===0 && sh.length===0){
+    box.innerHTML=`<div class="empty-note" style="grid-column:1/-1;">フィラメントが未登録です。「フィラメント管理」から追加してください。</div>`;
+    hint.textContent=''; return;
   }
-  if(state.sharedFilaments.length){
-    html+=`<optgroup label="共用フィラメント">${state.sharedFilaments.map(mk).join('')}</optgroup>`;
+  // 選択済みが使用中になったら解除
+  if(state.selectedFilamentId && isFilamentBusy(state.selectedFilamentId)){
+    state.selectedFilamentId='';
   }
-  if(!state.ownFilaments.length && !state.sharedFilaments.length){
-    html='<option value="">フィラメントが未登録です（管理から追加）</option>';
-  }
-  sel.innerHTML=html;
-  // 直前の選択が有効なら維持
-  if(prev && !isFilamentBusy(prev) && filamentById(prev)) sel.value=prev;
+  box.innerHTML = own.map(f=>fpickCard(f,false)).join('') + sh.map(f=>fpickCard(f,true)).join('');
+  const cur=filamentById(state.selectedFilamentId);
+  hint.textContent = cur ? `選択中：${filName(cur)}` : 'タップして選んでください';
+
+  box.querySelectorAll('.fpick[data-fid]').forEach(el=>{
+    el.onclick=()=>{
+      state.selectedFilamentId = el.getAttribute('data-fid');
+      renderFilPicker();
+    };
+  });
 }
 
 /* ---- 月の混み状況 ---- */
@@ -606,6 +682,7 @@ async function loadDay(){
   }
   $('slotLoading').classList.add('hidden');
   renderSlots();
+  renderFilPicker();
 }
 
 /* ---- 時間枠グリッド ---- */
@@ -676,7 +753,7 @@ function toggleHour(h){
   }
   state.selectedHours=cur.sort((a,b)=>a-b);
   renderSlots();
-  renderFilamentSelect();  // 選択時間に応じて使用中フィラメントを反映
+  renderFilPicker();
 }
 
 /* ---- 予約確定セクション ---- */
@@ -694,12 +771,12 @@ function updateReserveSection(){
 
 /* ---- 予約実行 ---- */
 async function doReserve(){
-  const name=state.currentUser;
+  const name=currentUser();
   const pass=($('passInput').value||'');
-  const fid=$('filSelect').value;
+  const fid=state.selectedFilamentId;
   if(!name){ toast('予約者を選んでください', true); return; }
   if(state.selectedHours.length===0){ toast('時間枠を選んでください', true); return; }
-  if(!fid){ toast('フィラメントを選んでください', true); $('filSelect').focus(); return; }
+  if(!fid){ toast('フィラメントを選んでください', true); return; }
   if(!pass){ toast('キャンセル用パスワードを入力してください', true); $('passInput').focus(); return; }
 
   const btn=$('reserveBtn');
@@ -717,14 +794,13 @@ async function doReserve(){
     $('passInput').value='';
     toast('予約しました');
     state.selectedHours=[];
+    state.selectedFilamentId='';
     await loadDay();
     await loadMonth();
     refreshQuota();
-    renderFilamentSelect();
   }catch(e){
     toast(e.message, true);
     await loadDay();
-    renderFilamentSelect();
   }
   btn.disabled=false; btn.textContent='予約する';
 }
@@ -767,7 +843,6 @@ async function execCancel(){
     await loadDay();
     await loadMonth();
     refreshQuota();
-    renderFilamentSelect();
   }catch(e){
     toast(e.message, true);
   }
@@ -777,40 +852,38 @@ async function execCancel(){
 /* ============================================================
    フィラメント管理
    ============================================================ */
-function openFilModal(){
-  if(!state.currentUser){
+async function openFilModal(){
+  const name=currentUser();
+  if(!name){
     toast('先に予約者を選んでください', true); return;
   }
-  $('ownFilTitle').textContent = `「${state.currentUser}」さんのフィラメント`;
+  $('ownFilTitle').textContent = `「${name}」さんのフィラメント`;
   $('filFormArea').innerHTML='';
-  renderFilLists();
   $('filModal').classList.remove('hidden');
+  // 一覧がまだ無ければ取得してから描画
+  if(state.ownFilaments.length===0 && state.sharedFilaments.length===0){
+    $('ownFilList').innerHTML='<div class="loading"><span class="spin"></span>読み込み中…</div>';
+    $('sharedFilList').innerHTML='';
+    await loadFilaments();
+  }
+  renderFilLists();
 }
 
 function filItemHtml(f, zone){
   const meta=[f.material,f.color,f.note].filter(Boolean).join(' / ');
-  const swatch = f.color ? `<span class="fil-chip" style="background:${escapeHtml(colorToCss(f.color))}"></span>` : '';
+  const thumb = f.photo
+    ? `<div class="fil-thumb"><img src="${f.photo}" alt=""></div>`
+    : `<div class="fil-thumb"><span class="fil-chip" style="background:${escapeHtml(colorToCss(f.color))}"></span></div>`;
   return `<div class="fil-item">`+
-    swatch+
+    thumb+
     `<div class="fil-body">`+
-      `<div class="fil-name">${escapeHtml(f.label)}</div>`+
+      `<div class="fil-name">${escapeHtml(filName(f))}</div>`+
       (meta?`<div class="fil-meta">${escapeHtml(meta)}</div>`:'')+
     `</div>`+
     `<div class="fil-acts">`+
       `<button class="icon-btn" data-edit="${escapeHtml(f.id)}" data-zone="${zone}">編集</button>`+
       `<button class="icon-btn del" data-del="${escapeHtml(f.id)}">削除</button>`+
     `</div></div>`;
-}
-
-/* 色名やコードをCSSの色に。不明なら灰色 */
-function colorToCss(c){
-  const s=String(c).trim();
-  if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s)) return s;
-  const map={'白':'#ffffff','黒':'#222222','赤':'#d94b45','青':'#3a72c4','緑':'#3aa06a','黄':'#e3c04a',
-             '橙':'#e08a3c','紫':'#8f7ff0','灰':'#9aa5b1','ピンク':'#e58fb0','透明':'#dfe7ee',
-             'white':'#ffffff','black':'#222222','red':'#d94b45','blue':'#3a72c4','green':'#3aa06a',
-             'yellow':'#e3c04a','orange':'#e08a3c','purple':'#8f7ff0','gray':'#9aa5b1','grey':'#9aa5b1'};
-  return map[s] || map[s.toLowerCase()] || '#c7d0d9';
 }
 
 function renderFilLists(){
@@ -834,54 +907,131 @@ function renderFilLists(){
 }
 
 /* 追加・編集フォーム */
+let formPhoto = null;      // 現在フォームで保持している写真(dataURL)。null=未変更
+let formPhotoTouched=false; // 写真を触ったか（編集時に既存を維持するか判定）
+
 function showFilForm(opt){
   const f = opt.filament || null;
   const isShared = opt.owner === 'shared';
+  formPhoto = f ? (f.photo || '') : '';
+  formPhotoTouched = false;
+
   $('filFormArea').innerHTML =
     `<div class="fil-form">`+
       `<h4 style="margin:0 0 10px;font-size:13px;color:var(--accent);">`+
         `${f?'編集':'追加'}：${isShared?'共用':'自分の'}フィラメント</h4>`+
-      `<div class="field"><label>フィラメント名（必須）</label>`+
-        `<input id="filLabel" type="text" placeholder="例）PLA 白 A社" value="${f?escapeHtml(f.label):''}"></div>`+
       `<div class="grid2">`+
-        `<div class="field"><label>素材</label>`+
-          `<input id="filMaterial" type="text" placeholder="PLA / PETG など" value="${f?escapeHtml(f.material):''}"></div>`+
-        `<div class="field"><label>色</label>`+
-          `<input id="filColor" type="text" placeholder="白 / #ffffff など" value="${f?escapeHtml(f.color):''}"></div>`+
+        `<div class="field"><label>種類 <span class="req">*</span></label>`+
+          `<input id="filMaterial" type="text" placeholder="PLA / ABS / PETG など" value="${f?escapeHtml(f.material):''}"></div>`+
+        `<div class="field"><label>色 <span class="req">*</span></label>`+
+          `<input id="filColor" type="text" placeholder="白 / 黒 / #ff0000 など" value="${f?escapeHtml(f.color):''}"></div>`+
       `</div>`+
-      `<div class="field"><label>メモ</label>`+
-        `<input id="filNote" type="text" placeholder="残量など（任意）" value="${f?escapeHtml(f.note):''}"></div>`+
+      `<div class="field"><label>メモ（任意）</label>`+
+        `<input id="filNote" type="text" placeholder="メーカー名・残量など" value="${f?escapeHtml(f.note):''}"></div>`+
+      `<div class="field"><label>写真（任意）</label>`+
+        `<div class="photo-row">`+
+          `<div class="photo-prev" id="photoPrev"></div>`+
+          `<div class="photo-btns">`+
+            `<button class="btn ghost sm" id="photoPickBtn">写真を選ぶ</button>`+
+            `<button class="btn ghost sm" id="photoClearBtn">写真を削除</button>`+
+          `</div>`+
+        `</div>`+
+        `<input id="photoInput" type="file" accept="image/*" class="hidden">`+
+        `<div class="hint" id="photoHint">スマホならその場で撮影もできます。自動で小さく圧縮して保存します。</div>`+
+      `</div>`+
       `<div class="modal-actions">`+
         `<button class="btn ghost" id="filFormCancel">やめる</button>`+
         `<button class="btn" id="filFormSave">${f?'保存':'追加'}</button>`+
       `</div>`+
     `</div>`;
+
+  renderPhotoPreview();
+  $('photoPickBtn').onclick=()=>$('photoInput').click();
+  $('photoClearBtn').onclick=()=>{ formPhoto=''; formPhotoTouched=true; renderPhotoPreview(); };
+  $('photoInput').onchange=onPhotoPicked;
   $('filFormCancel').onclick=()=>{ $('filFormArea').innerHTML=''; };
   $('filFormSave').onclick=()=>saveFilament(f? f.id : null, isShared);
-  $('filLabel').focus();
+  $('filMaterial').focus();
+}
+
+function renderPhotoPreview(){
+  const p=$('photoPrev');
+  if(!p) return;
+  p.innerHTML = formPhoto ? `<img src="${formPhoto}" alt="">` : 'なし';
+}
+
+/* 画像を縮小してdataURL化（容量を抑えてスプレッドシートに収める） */
+function fileToThumb(file, maxPx, quality){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      let w=img.width, h=img.height;
+      const scale=Math.min(1, maxPx/Math.max(w,h));
+      w=Math.max(1,Math.round(w*scale)); h=Math.max(1,Math.round(h*scale));
+      const cv=document.createElement('canvas');
+      cv.width=w; cv.height=h;
+      const ctx=cv.getContext('2d');
+      ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,w,h);
+      ctx.drawImage(img,0,0,w,h);
+      resolve(cv.toDataURL('image/jpeg', quality));
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error('画像を読み込めませんでした')); };
+    img.src=url;
+  });
+}
+
+async function onPhotoPicked(e){
+  const file=e.target.files && e.target.files[0];
+  if(!file) return;
+  const hint=$('photoHint');
+  hint.textContent='画像を処理中…';
+  try{
+    // 大きすぎる場合は段階的に縮めて 40000 文字以内に収める
+    let data=null;
+    const tries=[[260,0.68],[200,0.6],[160,0.55],[120,0.5]];
+    for(const [px,q] of tries){
+      data=await fileToThumb(file, px, q);
+      if(data.length<=40000) break;
+    }
+    if(!data || data.length>40000){
+      hint.textContent='この画像は大きすぎて保存できません。別の写真を選んでください。';
+      return;
+    }
+    formPhoto=data; formPhotoTouched=true;
+    renderPhotoPreview();
+    hint.textContent='写真を読み込みました。';
+  }catch(err){
+    hint.textContent='画像を読み込めませんでした。';
+  }finally{
+    e.target.value='';
+  }
 }
 
 async function saveFilament(id, isShared){
-  const label=($('filLabel').value||'').trim();
-  if(!label){ toast('フィラメント名を入力してください', true); return; }
-  const payload={
-    label:label,
-    material:($('filMaterial').value||'').trim(),
-    color:($('filColor').value||'').trim(),
-    note:($('filNote').value||'').trim()
-  };
+  const material=($('filMaterial').value||'').trim();
+  const color=($('filColor').value||'').trim();
+  const note=($('filNote').value||'').trim();
+  if(!material){ toast('種類を入力してください', true); $('filMaterial').focus(); return; }
+  if(!color){ toast('色を入力してください', true); $('filColor').focus(); return; }
+
+  const payload={ material:material, color:color, note:note };
+  // 新規は常に写真を送る。編集は触ったときだけ送る（未変更なら既存を維持）
+  if(!id || formPhotoTouched) payload.photo = formPhoto || '';
+
   const btn=$('filFormSave');
   btn.disabled=true; btn.textContent='保存中…';
   try{
     if(id){
       await api(Object.assign({action:'updateFilament', id:id}, payload));
     }else{
-      await api(Object.assign({action:'addFilament', owner: isShared ? '' : state.currentUser}, payload));
+      await api(Object.assign({action:'addFilament', owner: isShared ? '' : currentUser()}, payload));
     }
     $('filFormArea').innerHTML='';
     await loadFilaments();
     renderFilLists();
-    renderFilamentSelect();
+    renderFilPicker();
     toast(id?'保存しました':'追加しました');
   }catch(e){
     toast(e.message, true);
@@ -891,12 +1041,12 @@ async function saveFilament(id, isShared){
 
 async function deleteFilament(id){
   const f=filamentById(id);
-  if(!confirm(`「${f?f.label:''}」を削除しますか？`)) return;
+  if(!confirm(`「${f?filName(f):''}」を削除しますか？`)) return;
   try{
     await api({action:'deleteFilament', id:id});
     await loadFilaments();
     renderFilLists();
-    renderFilamentSelect();
+    renderFilPicker();
     toast('削除しました');
   }catch(e){
     toast(e.message, true);
