@@ -151,8 +151,9 @@
   }
   .fpick-sub{font-size:10px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .fpick-badge{
-    position:absolute;top:8px;left:8px;background:rgba(31,39,51,.72);color:#fff;
-    font-size:9px;padding:1px 5px;border-radius:5px;
+    position:absolute;top:6px;left:6px;right:6px;background:rgba(31,39,51,.74);color:#fff;
+    font-size:9px;line-height:1.25;padding:2px 5px;border-radius:5px;text-align:left;
+    overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
   }
   .fpick-busy{
     position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -197,6 +198,21 @@
   }
   .photo-prev img{width:100%;height:100%;object-fit:cover;display:block;}
   .photo-btns{display:flex;flex-direction:column;gap:6px;}
+  .sharer-row{display:flex;gap:8px;align-items:center;}
+  .sharer-row select{
+    flex:1 1 auto;padding:9px 10px;border:1px solid var(--line);border-radius:10px;
+    font-size:14px;background:#fff;color:var(--ink);font-family:inherit;
+  }
+  .sharer-row .btn{flex:0 0 auto;}
+  .sharer-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  .chip{
+    display:inline-flex;align-items:center;gap:4px;background:var(--accent-soft);
+    color:var(--accent);border-radius:999px;padding:3px 6px 3px 10px;font-size:12px;font-weight:600;
+  }
+  .chip-x{
+    border:none;background:rgba(47,111,158,.18);color:var(--accent);border-radius:50%;
+    width:18px;height:18px;line-height:1;cursor:pointer;font-size:12px;padding:0;font-family:inherit;
+  }
 
   /* --- モーダル --- */
   .modal-overlay{
@@ -337,7 +353,7 @@
 /* ============================================================
    設定: デプロイした GAS ウェブアプリの URL(/exec) をここに貼る
    ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbziU1OVAzFYhk-mNyVI3RLF1ypRsjJyGarELM0vWlHm5RXyAYa3Lk8L-OOoepNZJrLV/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyxVR36PvYJA93-BbucOx6aCVOkNFi9CaEwEST-z3A9Eu0BzxFb64kMnC4yJcmtkEKF/exec';
 
 /* ---- API 呼び出し ---- */
 async function api(payload){
@@ -358,7 +374,7 @@ const state = {
   windowStart:null, windowEnd:null, serverToday:null,
   machines:[], openHour:0, closeHour:24, maxHours:2,
   users:[],
-  ownFilaments:[], sharedFilaments:[],
+  ownFilaments:[], sharedFilaments:[], sharedWithMe:[],
   filamentBusy:{},
   selectedFilamentId:'',
   selectedDate:null,
@@ -392,7 +408,7 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c=>(
     {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function allFilaments(){ return state.ownFilaments.concat(state.sharedFilaments); }
+function allFilaments(){ return state.ownFilaments.concat(state.sharedWithMe, state.sharedFilaments); }
 function filamentById(id){ return allFilaments().find(f=>f.id===id) || null; }
 function filName(f){ return [f.material,f.color].filter(Boolean).join(' ') || f.label || ''; }
 
@@ -501,13 +517,15 @@ async function refreshQuota(){
 /* ---- フィラメント一覧 ---- */
 async function loadFilaments(){
   const name=currentUser();
-  if(!name){ state.ownFilaments=[]; state.sharedFilaments=[]; return; }
+  if(!name){ state.ownFilaments=[]; state.sharedFilaments=[]; state.sharedWithMe=[]; return; }
   try{
     const d = await api({action:'listFilaments', name:name});
     state.ownFilaments = d.own || [];
     state.sharedFilaments = d.shared || [];
+    state.sharedWithMe = d.sharedWith || [];
+    if(d.users && d.users.length) state.users = d.users;
   }catch(e){
-    state.ownFilaments = []; state.sharedFilaments = [];
+    state.ownFilaments = []; state.sharedFilaments = []; state.sharedWithMe = [];
   }
 }
 
@@ -519,15 +537,28 @@ function isFilamentBusy(fid){
 }
 
 /* ---- フィラメント選択（写真つきカード） ---- */
-function fpickCard(f, isShared){
+/* zone: 'own'(自分の) / 'with'(他の人と共同利用) / 'shared'(共用ゾーン) */
+function fpickBadge(f, zone){
+  if(zone==='shared') return '共用';
+  const sh=(f.sharers||[]).filter(Boolean);
+  if(zone==='own'){
+    return sh.length ? `自分（${sh.join('・')}さんと共用）` : '';
+  }
+  // 他の人が持っていて、自分が共同利用者に入っているもの
+  const others=[f.owner].concat(sh.filter(n=>n!==currentUser()));
+  return `${others.join('・')}さんと共用`;
+}
+
+function fpickCard(f, zone){
   const busy=isFilamentBusy(f.id);
   const sel=(state.selectedFilamentId===f.id);
   const img = f.photo
     ? `<img src="${f.photo}" alt="">`
     : `<span class="fpick-swatch" style="background:${escapeHtml(colorToCss(f.color))}"></span>`;
+  const badge=fpickBadge(f, zone);
   return `<div class="fpick${sel?' sel':''}${busy?' busy':''}" ${busy?'':`data-fid="${escapeHtml(f.id)}"`}>`+
       `<div class="fpick-img">${img}</div>`+
-      (isShared?`<span class="fpick-badge">共用</span>`:'')+
+      (badge?`<span class="fpick-badge">${escapeHtml(badge)}</span>`:'')+
       `<div class="fpick-name">${escapeHtml(filName(f))}</div>`+
       (f.note?`<div class="fpick-sub">${escapeHtml(f.note)}</div>`:'')+
       (busy?`<div class="fpick-busy">同時間<br>使用中</div>`:'')+
@@ -540,8 +571,8 @@ function renderFilPicker(){
     box.innerHTML=`<div class="empty-note" style="grid-column:1/-1;">先に予約者を選んでください。</div>`;
     hint.textContent=''; return;
   }
-  const own=state.ownFilaments, sh=state.sharedFilaments;
-  if(own.length===0 && sh.length===0){
+  const own=state.ownFilaments, sh=state.sharedFilaments, wi=state.sharedWithMe;
+  if(own.length===0 && sh.length===0 && wi.length===0){
     box.innerHTML=`<div class="empty-note" style="grid-column:1/-1;">フィラメントが未登録です。「フィラメント管理」から追加してください。</div>`;
     hint.textContent=''; return;
   }
@@ -549,7 +580,9 @@ function renderFilPicker(){
   if(state.selectedFilamentId && isFilamentBusy(state.selectedFilamentId)){
     state.selectedFilamentId='';
   }
-  box.innerHTML = own.map(f=>fpickCard(f,false)).join('') + sh.map(f=>fpickCard(f,true)).join('');
+  box.innerHTML = own.map(f=>fpickCard(f,'own')).join('')
+                + wi.map(f=>fpickCard(f,'with')).join('')
+                + sh.map(f=>fpickCard(f,'shared')).join('');
   const cur=filamentById(state.selectedFilamentId);
   hint.textContent = cur ? `選択中：${filName(cur)}` : 'タップして選んでください';
 
@@ -871,6 +904,7 @@ async function openFilModal(){
 
 function filItemHtml(f, zone){
   const meta=[f.material,f.color,f.note].filter(Boolean).join(' / ');
+  const sh=(f.sharers||[]).filter(Boolean);
   const thumb = f.photo
     ? `<div class="fil-thumb"><img src="${f.photo}" alt=""></div>`
     : `<div class="fil-thumb"><span class="fil-chip" style="background:${escapeHtml(colorToCss(f.color))}"></span></div>`;
@@ -879,6 +913,7 @@ function filItemHtml(f, zone){
     `<div class="fil-body">`+
       `<div class="fil-name">${escapeHtml(filName(f))}</div>`+
       (meta?`<div class="fil-meta">${escapeHtml(meta)}</div>`:'')+
+      (sh.length?`<div class="fil-meta" style="color:var(--accent);">共同利用：${escapeHtml(sh.join('・'))}</div>`:'')+
     `</div>`+
     `<div class="fil-acts">`+
       `<button class="icon-btn" data-edit="${escapeHtml(f.id)}" data-zone="${zone}">編集</button>`+
@@ -909,12 +944,14 @@ function renderFilLists(){
 /* 追加・編集フォーム */
 let formPhoto = null;      // 現在フォームで保持している写真(dataURL)。null=未変更
 let formPhotoTouched=false; // 写真を触ったか（編集時に既存を維持するか判定）
+let formSharers=[];         // 共同利用者の名前一覧
 
 function showFilForm(opt){
   const f = opt.filament || null;
   const isShared = opt.owner === 'shared';
   formPhoto = f ? (f.photo || '') : '';
   formPhotoTouched = false;
+  formSharers = f ? (f.sharers || []).slice() : [];
 
   $('filFormArea').innerHTML =
     `<div class="fil-form">`+
@@ -928,6 +965,15 @@ function showFilForm(opt){
       `</div>`+
       `<div class="field"><label>メモ（任意）</label>`+
         `<input id="filNote" type="text" placeholder="メーカー名・残量など" value="${f?escapeHtml(f.note):''}"></div>`+
+      (isShared ? '' :
+        `<div class="field"><label>共同利用者（任意）</label>`+
+          `<div class="sharer-row">`+
+            `<select id="sharerSelect"></select>`+
+            `<button class="btn ghost sm" id="sharerAddBtn">追加</button>`+
+          `</div>`+
+          `<div id="sharerChips" class="sharer-chips"></div>`+
+          `<div class="hint">選んだ人も、このフィラメントを予約で使えるようになります。</div>`+
+        `</div>`)+
       `<div class="field"><label>写真（任意）</label>`+
         `<div class="photo-row">`+
           `<div class="photo-prev" id="photoPrev"></div>`+
@@ -946,12 +992,42 @@ function showFilForm(opt){
     `</div>`;
 
   renderPhotoPreview();
+  if(!isShared){
+    renderSharerUI();
+    $('sharerAddBtn').onclick=()=>{
+      const v=$('sharerSelect').value;
+      if(!v){ toast('追加する人を選んでください', true); return; }
+      if(formSharers.indexOf(v)<0) formSharers.push(v);
+      renderSharerUI();
+    };
+  }
   $('photoPickBtn').onclick=()=>$('photoInput').click();
   $('photoClearBtn').onclick=()=>{ formPhoto=''; formPhotoTouched=true; renderPhotoPreview(); };
   $('photoInput').onchange=onPhotoPicked;
   $('filFormCancel').onclick=()=>{ $('filFormArea').innerHTML=''; };
   $('filFormSave').onclick=()=>saveFilament(f? f.id : null, isShared);
   $('filMaterial').focus();
+}
+
+/* 共同利用者の選択UI（プルダウン＋追加済みチップ） */
+function renderSharerUI(){
+  const sel=$('sharerSelect'), chips=$('sharerChips');
+  if(!sel || !chips) return;
+  const me=currentUser();
+  const cands=state.users.filter(u=>u!==me && formSharers.indexOf(u)<0);
+  sel.innerHTML = cands.length
+    ? '<option value="">名前を選ぶ…</option>'+cands.map(u=>`<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('')
+    : '<option value="">追加できる人がいません</option>';
+  chips.innerHTML = formSharers.length
+    ? formSharers.map(u=>
+        `<span class="chip">${escapeHtml(u)}<button class="chip-x" data-rm="${escapeHtml(u)}">×</button></span>`).join('')
+    : `<span class="hint" style="margin:0;">まだ登録されていません（自分だけが使えます）</span>`;
+  chips.querySelectorAll('[data-rm]').forEach(el=>{
+    el.onclick=()=>{
+      formSharers=formSharers.filter(u=>u!==el.getAttribute('data-rm'));
+      renderSharerUI();
+    };
+  });
 }
 
 function renderPhotoPreview(){
@@ -1017,6 +1093,7 @@ async function saveFilament(id, isShared){
   if(!color){ toast('色を入力してください', true); $('filColor').focus(); return; }
 
   const payload={ material:material, color:color, note:note };
+  if(!isShared) payload.sharers = formSharers;
   // 新規は常に写真を送る。編集は触ったときだけ送る（未変更なら既存を維持）
   if(!id || formPhotoTouched) payload.photo = formPhoto || '';
 
