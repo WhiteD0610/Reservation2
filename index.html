@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>機械予約</title>
+<style>
+  :root{
+    --bg:#eef1f4;
+    --panel:#ffffff;
+    --ink:#1f2733;
+    --ink-soft:#5c6b7a;
+    --line:#dde3ea;
+    --accent:#2f6f9e;
+    --accent-soft:#e7f0f7;
+    --free:#2f9e6f;   --free-bg:#e6f6ef;
+    --some:#c98a1e;   --some-bg:#fbf1dd;
+    --full:#cf5148;   --full-bg:#fae7e5;
+    --taken:#f4d3cf;
+    --shadow:0 1px 3px rgba(20,30,45,.08),0 6px 20px rgba(20,30,45,.06);
+    --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.6;-webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:20px 16px 64px;}
+  header h1{font-size:20px;margin:6px 0 2px;letter-spacing:.02em;}
+  header p{margin:0 0 18px;color:var(--ink-soft);font-size:13px;}
+
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px;margin-bottom:16px;
+  }
+  .card h2{font-size:14px;margin:0 0 12px;color:var(--ink-soft);font-weight:600;letter-spacing:.03em;}
+
+  /* --- フォーム部品 --- */
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:5px;}
+  .field input, .field select{
+    width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;font-size:15px;
+    background:#fff;color:var(--ink);font-family:inherit;
+  }
+  .field select{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' stroke='%235c6b7a' stroke-width='2' fill='none'/></svg>");background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;}
+  .field input:focus, .field select:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent);}
+  .btn{
+    width:100%;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:600;
+    background:var(--accent);color:#fff;cursor:pointer;font-family:inherit;
+  }
+  .btn:disabled{background:#a9bccb;cursor:default;}
+  .btn.ghost{background:#fff;color:var(--accent);border:1px solid var(--line);}
+  .btn.danger{background:#fff;color:var(--full);border:1px solid var(--taken);}
+  .btn.sm{padding:8px 12px;font-size:13px;width:auto;}
+
+  .quota-note{
+    font-size:12px;color:var(--ink-soft);background:var(--bg);
+    border-radius:8px;padding:7px 10px;margin:0;
+  }
+  .quota-note.zero{color:var(--full);background:var(--full-bg);font-weight:600;}
+  .quota-note b{color:var(--accent);}
+  .quota-note.zero b{color:var(--full);}
+  .row-between{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-top:10px;}
+
+  /* --- カレンダー --- */
+  .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .cal-head .month{font-size:16px;font-weight:600;}
+  .navbtn{
+    border:1px solid var(--line);background:#fff;border-radius:8px;
+    width:36px;height:36px;font-size:16px;cursor:pointer;color:var(--ink);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .navbtn:active{background:var(--bg);}
+  .window-note{
+    font-size:12px;color:var(--accent);background:var(--accent-soft);
+    border-radius:8px;padding:7px 10px;margin-bottom:10px;text-align:center;font-weight:600;
+  }
+  .grid7{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .dow{text-align:center;font-size:11px;color:var(--ink-soft);padding:4px 0;}
+  .dow.sun{color:var(--full);} .dow.sat{color:var(--accent);}
+  .day{
+    position:relative;border:1px solid transparent;border-radius:10px;
+    padding:6px 2px 4px;text-align:center;cursor:pointer;background:#fbfcfd;
+    min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
+  }
+  .day.empty{background:transparent;cursor:default;}
+  .day .num{font-size:13px;font-variant-numeric:tabular-nums;}
+  .day .mark{font-size:15px;font-weight:700;line-height:1;}
+  .day.past{opacity:.4;cursor:default;}
+  .day.past .mark{color:var(--ink-soft);}
+  .day.locked{opacity:.55;cursor:default;background:#f4f6f8;}
+  .day.locked .mark{color:#b7c0cb;font-size:12px;}
+  .day.sel{border-color:var(--accent);background:var(--accent-soft);}
+  .day .mk-free{color:var(--free);} .day .mk-some{color:var(--some);} .day .mk-full{color:var(--full);}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--ink-soft);}
+  .legend span{display:inline-flex;align-items:center;gap:4px;}
+  .legend b{font-size:14px;}
+
+  /* --- 機械タブ --- */
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;}
+  .tab{
+    flex:1 1 auto;min-width:88px;border:1px solid var(--line);background:#fff;border-radius:10px;
+    padding:10px 8px;font-size:14px;cursor:pointer;color:var(--ink);text-align:center;font-family:inherit;
+  }
+  .tab.sel{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+
+  /* --- 時間枠グリッド --- */
+  .slots{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  @media(max-width:480px){ .slots{grid-template-columns:repeat(3,1fr);} }
+  .slot{
+    border:1px solid var(--line);border-radius:10px;background:#fff;
+    padding:9px 4px;text-align:center;cursor:pointer;position:relative;font-variant-numeric:tabular-nums;
+  }
+  .slot .t{font-size:14px;font-weight:600;}
+  .slot .s{font-size:11px;color:var(--ink-soft);margin-top:1px;}
+  .slot.free:active{background:var(--accent-soft);}
+  .slot.sel{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .slot.sel .s{color:#dbe8f2;}
+  .slot.taken{background:var(--full-bg);border-color:var(--taken);cursor:pointer;}
+  .slot.taken .t{color:var(--full);}
+  .slot.taken .s{color:var(--full);}
+  .slot .who{
+    font-size:10px;color:var(--ink-soft);margin-top:2px;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .slot.taken .who{color:#a24039;}
+  .slot .fil{
+    font-size:9px;color:#b07a74;margin-top:1px;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .slot.disabled{opacity:.4;cursor:default;}
+
+  /* --- 予約サマリ --- */
+  .summary{font-size:14px;background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
+  .summary b{color:var(--accent);}
+  .hint{color:var(--ink-soft);font-size:12px;margin-top:8px;}
+  .empty-note{color:var(--ink-soft);font-size:13px;padding:8px 0;}
+
+  /* --- フィラメント管理 --- */
+  .fil-group{margin-bottom:18px;}
+  .fil-group h4{font-size:13px;margin:0 0 8px;color:var(--accent);font-weight:600;}
+  .fil-item{
+    display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);
+    border-radius:10px;margin-bottom:6px;background:#fff;
+  }
+  .fil-chip{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.15);flex:0 0 auto;}
+  .fil-body{flex:1 1 auto;min-width:0;}
+  .fil-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .fil-meta{font-size:11px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .fil-acts{display:flex;gap:6px;flex:0 0 auto;}
+  .icon-btn{
+    border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 9px;
+    font-size:12px;cursor:pointer;color:var(--ink-soft);font-family:inherit;
+  }
+  .icon-btn.del{color:var(--full);border-color:var(--taken);}
+  .fil-form{border:1px dashed var(--line);border-radius:10px;padding:12px;margin-top:8px;background:#fbfcfd;}
+  .fil-form .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  @media(max-width:420px){ .fil-form .grid2{grid-template-columns:1fr;} }
+
+  /* --- モーダル --- */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(20,30,45,.45);
+    display:flex;align-items:center;justify-content:center;padding:20px;z-index:60;
+  }
+  .modal{
+    background:#fff;border-radius:14px;padding:20px;max-width:340px;width:100%;
+    box-shadow:0 12px 44px rgba(0,0,0,.28);
+  }
+  .modal.wide{max-width:520px;max-height:86vh;overflow-y:auto;}
+  .modal h3{margin:0 0 12px;font-size:16px;}
+  .modal-info{font-size:14px;background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:14px;}
+  .modal-actions{display:flex;gap:10px;}
+  .modal-actions .btn{flex:1;}
+
+  #toast{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+    background:#1f2733;color:#fff;padding:11px 18px;border-radius:10px;font-size:14px;
+    opacity:0;pointer-events:none;transition:.25s;max-width:90%;text-align:center;z-index:80;
+  }
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  #toast.err{background:#a23a33;}
+
+  .loading{color:var(--ink-soft);font-size:13px;display:flex;align-items:center;gap:8px;}
+  .spin{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;}
+  @keyframes sp{to{transform:rotate(360deg);}}
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>機械予約</h1>
+    <p>予約者を選び、日付・機械・時間枠・フィラメントを選んで予約します（連続は最大2時間）。</p>
+  </header>
+
+  <!-- 予約者（常設） -->
+  <section class="card" id="userCard">
+    <div class="field" style="margin-bottom:8px;">
+      <label for="userSelect">予約者</label>
+      <select id="userSelect"><option value="">読み込み中…</option></select>
+    </div>
+    <div id="quotaNote" class="quota-note hidden"></div>
+    <div class="row-between">
+      <span class="hint" style="margin:0;">フィラメントの登録・編集はこちら →</span>
+      <button class="btn ghost sm" id="openFilBtn">フィラメント管理</button>
+    </div>
+  </section>
+
+  <!-- カレンダー -->
+  <section class="card">
+    <div class="cal-head">
+      <button class="navbtn" id="prevM" aria-label="前の月">‹</button>
+      <div class="month" id="monthLabel">—</div>
+      <button class="navbtn" id="nextM" aria-label="次の月">›</button>
+    </div>
+    <div id="windowNote" class="window-note hidden"></div>
+    <div class="grid7" id="dowRow"></div>
+    <div class="grid7" id="calBody" style="margin-top:4px;"></div>
+    <div id="calLoading" class="loading hidden" style="margin-top:10px;"><span class="spin"></span>混み状況を読み込み中…</div>
+    <div class="legend">
+      <span><b class="mk-free" style="color:var(--free);">〇</b> 空きあり</span>
+      <span><b class="mk-some" style="color:var(--some);">△</b> やや混雑</span>
+      <span><b class="mk-full" style="color:var(--full);">✕</b> 混雑</span>
+      <span><b style="color:#b7c0cb;">🔒</b> 未解放</span>
+    </div>
+  </section>
+
+  <!-- 機械選択 + 時間枠 -->
+  <section class="card" id="daySection">
+    <h2 id="daySectionTitle">日付を選んでください</h2>
+    <div class="tabs" id="machineTabs"></div>
+    <div id="slotArea" style="margin-top:14px;">
+      <div class="empty-note">日付を選ぶと空き時間枠が表示されます。</div>
+    </div>
+    <div id="slotLoading" class="loading hidden" style="margin-top:8px;"><span class="spin"></span>空き状況を確認中…</div>
+  </section>
+
+  <!-- 予約確定 -->
+  <section class="card hidden" id="reserveSection">
+    <h2>この内容で予約</h2>
+    <div class="summary" id="reserveSummary"></div>
+    <div class="field">
+      <label for="filSelect">使用するフィラメント</label>
+      <select id="filSelect"><option value="">選択してください</option></select>
+    </div>
+    <div class="field">
+      <label for="passInput">キャンセル用パスワード</label>
+      <input id="passInput" type="password" placeholder="キャンセル時に使う合言葉" autocomplete="off">
+    </div>
+    <button class="btn" id="reserveBtn">予約する</button>
+    <div class="hint">※ 同じ時間に同じフィラメントを別の機械では使えません（使用中のものは選べません）。キャンセルは予約枠をもう一度タップし、このパスワードを入力します。大事なパスワードの使い回しは避けてください。</div>
+  </section>
+</div>
+
+<!-- キャンセル用モーダル -->
+<div id="cancelModal" class="modal-overlay hidden">
+  <div class="modal">
+    <h3>予約をキャンセル</h3>
+    <div class="modal-info" id="cancelInfo"></div>
+    <div class="field">
+      <label for="cancelPass">予約時のパスワード</label>
+      <input id="cancelPass" type="password" placeholder="パスワード" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="cancelModalClose">閉じる</button>
+      <button class="btn" id="cancelModalExec">キャンセルする</button>
+    </div>
+  </div>
+</div>
+
+<!-- フィラメント管理モーダル -->
+<div id="filModal" class="modal-overlay hidden">
+  <div class="modal wide">
+    <h3>フィラメント管理</h3>
+    <div class="fil-group">
+      <h4 id="ownFilTitle">自分のフィラメント</h4>
+      <div id="ownFilList"></div>
+      <button class="btn ghost sm" id="addOwnBtn">＋ 自分のフィラメントを追加</button>
+    </div>
+    <div class="fil-group">
+      <h4>共用フィラメント（全員が使えます）</h4>
+      <div id="sharedFilList"></div>
+      <button class="btn ghost sm" id="addSharedBtn">＋ 共用フィラメントを追加</button>
+    </div>
+    <div id="filFormArea"></div>
+    <div class="modal-actions" style="margin-top:10px;">
+      <button class="btn ghost" id="filModalClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   設定: デプロイした GAS ウェブアプリの URL(/exec) をここに貼る
+   ============================================================ */
+const GAS_URL = 'ここにGASウェブアプリのURL(/exec)を貼る';
+
+/* ---- API 呼び出し ---- */
+async function api(payload){
+  const res = await fetch(GAS_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error || '処理に失敗しました');
+  return data;
+}
+
+/* ---- 状態 ---- */
+const state = {
+  viewYear:0, viewMonth:0,
+  monthCounts:{}, slotsPerDay:0,
+  windowStart:null, windowEnd:null, serverToday:null,
+  machines:[], openHour:0, closeHour:24, maxHours:2,
+  users:[], currentUser:'',
+  ownFilaments:[], sharedFilaments:[],
+  filamentBusy:{},              // {filamentId:[使用中の時間,...]} 選択日の全機械分
+  selectedDate:null,
+  selectedMachine:null,
+  dayReservations:[],
+  selectedHours:[]
+};
+
+const DOW = ['日','月','火','水','木','金','土'];
+const $ = id => document.getElementById(id);
+
+/* ---- ユーティリティ ---- */
+function pad(n){ return (n<10?'0':'')+n; }
+function ymd(y,m,d){ return y+'-'+pad(m+1)+'-'+pad(d); }
+function todayLocal(){ const t=new Date(); return ymd(t.getFullYear(),t.getMonth(),t.getDate()); }
+function monthStr(y,m){ return y+'-'+pad(m+1); }
+function hourLabel(h){ return pad(h)+':00'; }
+function mdLabel(ds){ const p=ds.split('-'); return Number(p[1])+'/'+Number(p[2]); }
+function slotStartMs(ds,h){ const p=ds.split('-'); return new Date(Number(p[0]),Number(p[1])-1,Number(p[2]),h,0,0).getTime(); }
+function rangeLabel(hours){
+  const s=Math.min(...hours), e=Math.max(...hours)+1;
+  return pad(s)+':00〜'+pad(e)+':00';
+}
+function machineLabel(key){
+  const m=state.machines.find(x=>x.key===key); return m?m.label:key;
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>(
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function allFilaments(){ return state.ownFilaments.concat(state.sharedFilaments); }
+function filamentById(id){ return allFilaments().find(f=>f.id===id) || null; }
+
+let toastTimer=null;
+function toast(msg, isErr){
+  const t=$('toast'); t.textContent=msg;
+  t.className='show'+(isErr?' err':'');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{ t.className=''; }, 3000);
+}
+
+/* ============================================================
+   初期化
+   ============================================================ */
+async function init(){
+  $('dowRow').innerHTML = DOW.map((d,i)=>
+    `<div class="dow ${i===0?'sun':''}${i===6?'sat':''}">${d}</div>`).join('');
+
+  const now=new Date();
+  state.viewYear=now.getFullYear();
+  state.viewMonth=now.getMonth();
+
+  try{
+    const cfg = await api({action:'config'});
+    state.machines=cfg.machines; state.openHour=cfg.openHour;
+    state.closeHour=cfg.closeHour; state.maxHours=cfg.maxHours;
+  }catch(e){
+    toast('サーバに接続できません。URL設定を確認してください。', true);
+    return;
+  }
+
+  await loadUsers();
+  renderMachineTabs();
+  await loadMonth();
+
+  $('prevM').onclick=()=>changeMonth(-1);
+  $('nextM').onclick=()=>changeMonth(1);
+  $('reserveBtn').onclick=doReserve;
+  $('userSelect').onchange=onUserChange;
+  $('openFilBtn').onclick=openFilModal;
+  $('filModalClose').onclick=()=>$('filModal').classList.add('hidden');
+  $('addOwnBtn').onclick=()=>showFilForm({owner:'own'});
+  $('addSharedBtn').onclick=()=>showFilForm({owner:'shared'});
+  $('cancelModalClose').onclick=closeCancelModal;
+  $('cancelModalExec').onclick=execCancel;
+  $('cancelModal').addEventListener('click', e=>{ if(e.target.id==='cancelModal') closeCancelModal(); });
+  $('filSelect').onchange=()=>{};
+}
+
+/* ---- 予約者一覧 ---- */
+async function loadUsers(){
+  try{
+    const d = await api({action:'listUsers'});
+    state.users = d.users || [];
+  }catch(e){
+    state.users = [];
+  }
+  const sel=$('userSelect');
+  if(state.users.length===0){
+    sel.innerHTML='<option value="">（usersシートに名前を追加してください）</option>';
+    return;
+  }
+  const saved = localStorage.getItem('resv_user') || '';
+  sel.innerHTML = '<option value="">選択してください</option>' +
+    state.users.map(u=>`<option value="${escapeHtml(u)}"${u===saved?' selected':''}>${escapeHtml(u)}</option>`).join('');
+  if(saved && state.users.includes(saved)){
+    state.currentUser = saved;
+    await onUserChange();
+  }
+}
+
+async function onUserChange(){
+  state.currentUser = $('userSelect').value;
+  if(state.currentUser) localStorage.setItem('resv_user', state.currentUser);
+  await Promise.all([refreshQuota(), loadFilaments()]);
+  renderFilamentSelect();
+}
+
+/* ---- 残り予約可能枠 ---- */
+async function refreshQuota(){
+  const name=state.currentUser;
+  const el=$('quotaNote');
+  if(!name){ el.classList.add('hidden'); return; }
+  try{
+    const d=await api({action:'quota', name:name});
+    el.innerHTML=`「${escapeHtml(name)}」さん：あと <b>${d.remaining}</b> 枠（${d.max}枠中 ${d.used}枠 使用中）`;
+    el.classList.remove('hidden');
+    el.classList.toggle('zero', d.remaining<=0);
+  }catch(e){
+    el.classList.add('hidden');
+  }
+}
+
+/* ---- フィラメント一覧 ---- */
+async function loadFilaments(){
+  try{
+    const d = await api({action:'listFilaments', name:state.currentUser});
+    state.ownFilaments = d.own || [];
+    state.sharedFilaments = d.shared || [];
+  }catch(e){
+    state.ownFilaments = []; state.sharedFilaments = [];
+  }
+}
+
+/* 選択中の時間枠で、そのフィラメントが他機械で使用中か */
+function isFilamentBusy(fid){
+  const busy = state.filamentBusy[fid];
+  if(!busy || state.selectedHours.length===0) return false;
+  return state.selectedHours.some(h => busy.indexOf(h) >= 0);
+}
+
+function renderFilamentSelect(){
+  const sel=$('filSelect');
+  const prev=sel.value;
+  if(!state.currentUser){
+    sel.innerHTML='<option value="">先に予約者を選んでください</option>';
+    return;
+  }
+  const mk=(f)=>{
+    const busy=isFilamentBusy(f.id);
+    const meta=[f.material,f.color].filter(Boolean).join('・');
+    const txt=f.label + (meta?`（${meta}）`:'') + (busy?' ※同時間に使用中':'');
+    return `<option value="${escapeHtml(f.id)}"${busy?' disabled':''}>${escapeHtml(txt)}</option>`;
+  };
+  let html='<option value="">選択してください</option>';
+  if(state.ownFilaments.length){
+    html+=`<optgroup label="自分のフィラメント">${state.ownFilaments.map(mk).join('')}</optgroup>`;
+  }
+  if(state.sharedFilaments.length){
+    html+=`<optgroup label="共用フィラメント">${state.sharedFilaments.map(mk).join('')}</optgroup>`;
+  }
+  if(!state.ownFilaments.length && !state.sharedFilaments.length){
+    html='<option value="">フィラメントが未登録です（管理から追加）</option>';
+  }
+  sel.innerHTML=html;
+  // 直前の選択が有効なら維持
+  if(prev && !isFilamentBusy(prev) && filamentById(prev)) sel.value=prev;
+}
+
+/* ---- 月の混み状況 ---- */
+async function loadMonth(){
+  $('monthLabel').textContent = state.viewYear+'年 '+(state.viewMonth+1)+'月';
+  $('calLoading').classList.remove('hidden');
+  try{
+    const data = await api({action:'getMonth', month:monthStr(state.viewYear,state.viewMonth)});
+    state.monthCounts=data.counts||{};
+    state.slotsPerDay=data.slotsPerDay||0;
+    state.windowStart=data.windowStart||null;
+    state.windowEnd=data.windowEnd||null;
+    state.serverToday=data.today||null;
+  }catch(e){
+    toast(e.message, true);
+  }
+  $('calLoading').classList.add('hidden');
+  renderCalendar();
+}
+
+function changeMonth(delta){
+  state.viewMonth += delta;
+  if(state.viewMonth<0){ state.viewMonth=11; state.viewYear--; }
+  if(state.viewMonth>11){ state.viewMonth=0; state.viewYear++; }
+  loadMonth();
+}
+
+function markFor(dateStr){
+  const count = state.monthCounts[dateStr]||0;
+  const total = state.slotsPerDay||1;
+  const ratio = count/total;
+  if(ratio < 0.34) return {ch:'〇', cls:'mk-free'};
+  if(ratio < 0.67) return {ch:'△', cls:'mk-some'};
+  return {ch:'✕', cls:'mk-full'};
+}
+
+function renderCalendar(){
+  const y=state.viewYear, m=state.viewMonth;
+  const first=new Date(y,m,1).getDay();
+  const days=new Date(y,m+1,0).getDate();
+  const today=state.serverToday||todayLocal();
+  const winEnd=state.windowEnd, winStart=state.windowStart;
+
+  const note=$('windowNote');
+  if(winStart&&winEnd){
+    note.textContent=`受付中の期間：${mdLabel(winStart)} 〜 ${mdLabel(winEnd)}`;
+    note.classList.remove('hidden');
+  }else{
+    note.classList.add('hidden');
+  }
+
+  let html='';
+  for(let i=0;i<first;i++) html+='<div class="day empty"></div>';
+  for(let d=1;d<=days;d++){
+    const ds=ymd(y,m,d);
+    const isPast = ds < today;
+    const isLocked = winEnd && ds > winEnd;
+    const isSel = ds===state.selectedDate;
+    let inner=`<span class="num">${d}</span>`;
+    if(isPast){
+      inner+=`<span class="mark" style="color:var(--line)">·</span>`;
+    }else if(isLocked){
+      inner+=`<span class="mark">🔒</span>`;
+    }else{
+      const mk=markFor(ds);
+      inner+=`<span class="mark ${mk.cls}">${mk.ch}</span>`;
+    }
+    const cls = isPast ? ' past' : (isLocked ? ' locked' : '');
+    const selectable = !isPast && !isLocked;
+    html+=`<div class="day${cls}${isSel?' sel':''}" `+
+          `${selectable?`data-date="${ds}"`:`data-locked="${isLocked?1:0}"`}>${inner}</div>`;
+  }
+  $('calBody').innerHTML=html;
+  $('calBody').querySelectorAll('.day[data-date]').forEach(el=>{
+    el.onclick=()=>selectDate(el.getAttribute('data-date'));
+  });
+  $('calBody').querySelectorAll('.day[data-locked="1"]').forEach(el=>{
+    el.onclick=()=>toast('この期間はまだ予約受付が始まっていません');
+  });
+}
+
+/* ---- 日付選択 ---- */
+function selectDate(ds){
+  state.selectedDate=ds;
+  state.selectedHours=[];
+  renderCalendar();
+  const [yy,mm,dd]=ds.split('-');
+  $('daySectionTitle').textContent = `${Number(mm)}月${Number(dd)}日 の空き状況`;
+  if(!state.selectedMachine) state.selectedMachine=state.machines[0].key;
+  renderMachineTabs();
+  loadDay();
+}
+
+/* ---- 機械タブ ---- */
+function renderMachineTabs(){
+  $('machineTabs').innerHTML = state.machines.map(mc=>
+    `<button class="tab${mc.key===state.selectedMachine?' sel':''}" data-mc="${mc.key}">${escapeHtml(mc.label)}</button>`
+  ).join('');
+  $('machineTabs').querySelectorAll('.tab').forEach(el=>{
+    el.onclick=()=>{
+      state.selectedMachine=el.getAttribute('data-mc');
+      state.selectedHours=[];
+      renderMachineTabs();
+      if(state.selectedDate) loadDay();
+    };
+  });
+}
+
+/* ---- 指定日・機械の予約状況 ---- */
+async function loadDay(){
+  if(!state.selectedDate || !state.selectedMachine) return;
+  $('slotLoading').classList.remove('hidden');
+  $('slotArea').innerHTML='';
+  try{
+    const data = await api({action:'getDay', date:state.selectedDate, machine:state.selectedMachine});
+    state.dayReservations=data.reservations||[];
+    state.filamentBusy=data.filamentBusy||{};
+  }catch(e){
+    toast(e.message, true);
+    state.dayReservations=[]; state.filamentBusy={};
+  }
+  $('slotLoading').classList.add('hidden');
+  renderSlots();
+}
+
+/* ---- 時間枠グリッド ---- */
+function renderSlots(){
+  const taken={};
+  state.dayReservations.forEach(r=>{ taken[r.hour]=r; });
+  const today = state.serverToday || todayLocal();
+  const isToday = state.selectedDate === today;
+  const nowMs = Date.now();
+  if(isToday){
+    state.selectedHours = state.selectedHours.filter(h => slotStartMs(state.selectedDate, h) > nowMs);
+  }
+  let html='<div class="slots">';
+  for(let h=state.openHour; h<state.closeHour; h++){
+    const r=taken[h];
+    const sel = state.selectedHours.includes(h);
+    const isPastSlot = isToday && slotStartMs(state.selectedDate, h) <= nowMs;
+    if(r){
+      html+=`<div class="slot taken" data-hour="${h}" data-group="${r.groupId}">`+
+            `<div class="t">${hourLabel(h)}</div>`+
+            `<div class="s">予約済</div>`+
+            `<div class="who">${escapeHtml(r.name||'')}</div>`+
+            (r.filamentLabel?`<div class="fil">${escapeHtml(r.filamentLabel)}</div>`:'')+
+            `</div>`;
+    }else if(isPastSlot){
+      html+=`<div class="slot disabled"><div class="t">${hourLabel(h)}</div><div class="s">終了</div></div>`;
+    }else{
+      html+=`<div class="slot free${sel?' sel':''}" data-hour="${h}">`+
+            `<div class="t">${hourLabel(h)}</div>`+
+            `<div class="s">${sel?'選択中':'空き'}</div></div>`;
+    }
+  }
+  html+='</div>';
+  html+=`<div class="hint">空き枠をタップで選択（連続${state.maxHours}枠まで）。予約済み枠をタップし、予約時のパスワードでキャンセルできます。</div>`;
+  $('slotArea').innerHTML=html;
+
+  $('slotArea').querySelectorAll('.slot.free').forEach(el=>{
+    el.onclick=()=>toggleHour(Number(el.getAttribute('data-hour')));
+  });
+  $('slotArea').querySelectorAll('.slot.taken').forEach(el=>{
+    el.onclick=()=>openCancelModal(el.getAttribute('data-group'));
+  });
+
+  updateReserveSection();
+}
+
+/* ---- 枠の選択/解除 ---- */
+function toggleHour(h){
+  const cur=state.selectedHours.slice();
+  const idx=cur.indexOf(h);
+  if(idx>=0){
+    cur.splice(idx,1);
+  }else{
+    if(cur.length===0){
+      cur.push(h);
+    }else if(cur.length>=state.maxHours){
+      toast(`連続予約は最大${state.maxHours}時間までです`, true);
+      return;
+    }else{
+      const min=Math.min(...cur), max=Math.max(...cur);
+      if(h===min-1 || h===max+1){
+        cur.push(h);
+      }else{
+        toast('連続した枠のみ2つ選べます。選び直しました');
+        cur.length=0; cur.push(h);
+      }
+    }
+  }
+  state.selectedHours=cur.sort((a,b)=>a-b);
+  renderSlots();
+  renderFilamentSelect();  // 選択時間に応じて使用中フィラメントを反映
+}
+
+/* ---- 予約確定セクション ---- */
+function updateReserveSection(){
+  const sec=$('reserveSection');
+  if(state.selectedHours.length===0){
+    sec.classList.add('hidden'); return;
+  }
+  sec.classList.remove('hidden');
+  const [yy,mm,dd]=state.selectedDate.split('-');
+  $('reserveSummary').innerHTML =
+    `<b>${Number(mm)}月${Number(dd)}日</b> ／ <b>${escapeHtml(machineLabel(state.selectedMachine))}</b><br>`+
+    `<b>${rangeLabel(state.selectedHours)}</b>（${state.selectedHours.length}時間）`;
+}
+
+/* ---- 予約実行 ---- */
+async function doReserve(){
+  const name=state.currentUser;
+  const pass=($('passInput').value||'');
+  const fid=$('filSelect').value;
+  if(!name){ toast('予約者を選んでください', true); return; }
+  if(state.selectedHours.length===0){ toast('時間枠を選んでください', true); return; }
+  if(!fid){ toast('フィラメントを選んでください', true); $('filSelect').focus(); return; }
+  if(!pass){ toast('キャンセル用パスワードを入力してください', true); $('passInput').focus(); return; }
+
+  const btn=$('reserveBtn');
+  btn.disabled=true; btn.textContent='予約中…';
+  try{
+    await api({
+      action:'reserve',
+      date:state.selectedDate,
+      machine:state.selectedMachine,
+      hours:state.selectedHours,
+      name:name,
+      password:pass,
+      filamentId:fid
+    });
+    $('passInput').value='';
+    toast('予約しました');
+    state.selectedHours=[];
+    await loadDay();
+    await loadMonth();
+    refreshQuota();
+    renderFilamentSelect();
+  }catch(e){
+    toast(e.message, true);
+    await loadDay();
+    renderFilamentSelect();
+  }
+  btn.disabled=false; btn.textContent='予約する';
+}
+
+/* ---- キャンセル ---- */
+let cancelTargetGroup=null;
+
+function rangeForGroup(groupId){
+  const hs=state.dayReservations.filter(x=>x.groupId===groupId).map(x=>x.hour);
+  return hs.length ? rangeLabel(hs) : '';
+}
+
+function openCancelModal(groupId){
+  const r=state.dayReservations.find(x=>x.groupId===groupId);
+  cancelTargetGroup=groupId;
+  $('cancelInfo').innerHTML =
+    `${escapeHtml(r?r.name:'')} さんの予約<br>`+
+    `${escapeHtml(machineLabel(state.selectedMachine))} ／ ${rangeForGroup(groupId)}`+
+    (r&&r.filamentLabel?`<br>フィラメント：${escapeHtml(r.filamentLabel)}`:'');
+  $('cancelPass').value='';
+  $('cancelModal').classList.remove('hidden');
+  setTimeout(()=>$('cancelPass').focus(),50);
+}
+
+function closeCancelModal(){
+  $('cancelModal').classList.add('hidden');
+  cancelTargetGroup=null;
+}
+
+async function execCancel(){
+  if(!cancelTargetGroup) return;
+  const pass=($('cancelPass').value||'');
+  if(!pass){ toast('パスワードを入力してください', true); $('cancelPass').focus(); return; }
+  const btn=$('cancelModalExec');
+  btn.disabled=true; btn.textContent='処理中…';
+  try{
+    await api({action:'cancel', groupId:cancelTargetGroup, password:pass});
+    toast('キャンセルしました');
+    closeCancelModal();
+    await loadDay();
+    await loadMonth();
+    refreshQuota();
+    renderFilamentSelect();
+  }catch(e){
+    toast(e.message, true);
+  }
+  btn.disabled=false; btn.textContent='キャンセルする';
+}
+
+/* ============================================================
+   フィラメント管理
+   ============================================================ */
+function openFilModal(){
+  if(!state.currentUser){
+    toast('先に予約者を選んでください', true); return;
+  }
+  $('ownFilTitle').textContent = `「${state.currentUser}」さんのフィラメント`;
+  $('filFormArea').innerHTML='';
+  renderFilLists();
+  $('filModal').classList.remove('hidden');
+}
+
+function filItemHtml(f, zone){
+  const meta=[f.material,f.color,f.note].filter(Boolean).join(' / ');
+  const swatch = f.color ? `<span class="fil-chip" style="background:${escapeHtml(colorToCss(f.color))}"></span>` : '';
+  return `<div class="fil-item">`+
+    swatch+
+    `<div class="fil-body">`+
+      `<div class="fil-name">${escapeHtml(f.label)}</div>`+
+      (meta?`<div class="fil-meta">${escapeHtml(meta)}</div>`:'')+
+    `</div>`+
+    `<div class="fil-acts">`+
+      `<button class="icon-btn" data-edit="${escapeHtml(f.id)}" data-zone="${zone}">編集</button>`+
+      `<button class="icon-btn del" data-del="${escapeHtml(f.id)}">削除</button>`+
+    `</div></div>`;
+}
+
+/* 色名やコードをCSSの色に。不明なら灰色 */
+function colorToCss(c){
+  const s=String(c).trim();
+  if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s)) return s;
+  const map={'白':'#ffffff','黒':'#222222','赤':'#d94b45','青':'#3a72c4','緑':'#3aa06a','黄':'#e3c04a',
+             '橙':'#e08a3c','紫':'#8f7ff0','灰':'#9aa5b1','ピンク':'#e58fb0','透明':'#dfe7ee',
+             'white':'#ffffff','black':'#222222','red':'#d94b45','blue':'#3a72c4','green':'#3aa06a',
+             'yellow':'#e3c04a','orange':'#e08a3c','purple':'#8f7ff0','gray':'#9aa5b1','grey':'#9aa5b1'};
+  return map[s] || map[s.toLowerCase()] || '#c7d0d9';
+}
+
+function renderFilLists(){
+  const own=$('ownFilList'), sh=$('sharedFilList');
+  own.innerHTML = state.ownFilaments.length
+    ? state.ownFilaments.map(f=>filItemHtml(f,'own')).join('')
+    : `<div class="empty-note">まだ登録がありません。</div>`;
+  sh.innerHTML = state.sharedFilaments.length
+    ? state.sharedFilaments.map(f=>filItemHtml(f,'shared')).join('')
+    : `<div class="empty-note">まだ登録がありません。</div>`;
+
+  $('filModal').querySelectorAll('[data-edit]').forEach(el=>{
+    el.onclick=()=>{
+      const f=filamentById(el.getAttribute('data-edit'));
+      if(f) showFilForm({owner:el.getAttribute('data-zone'), filament:f});
+    };
+  });
+  $('filModal').querySelectorAll('[data-del]').forEach(el=>{
+    el.onclick=()=>deleteFilament(el.getAttribute('data-del'));
+  });
+}
+
+/* 追加・編集フォーム */
+function showFilForm(opt){
+  const f = opt.filament || null;
+  const isShared = opt.owner === 'shared';
+  $('filFormArea').innerHTML =
+    `<div class="fil-form">`+
+      `<h4 style="margin:0 0 10px;font-size:13px;color:var(--accent);">`+
+        `${f?'編集':'追加'}：${isShared?'共用':'自分の'}フィラメント</h4>`+
+      `<div class="field"><label>フィラメント名（必須）</label>`+
+        `<input id="filLabel" type="text" placeholder="例）PLA 白 A社" value="${f?escapeHtml(f.label):''}"></div>`+
+      `<div class="grid2">`+
+        `<div class="field"><label>素材</label>`+
+          `<input id="filMaterial" type="text" placeholder="PLA / PETG など" value="${f?escapeHtml(f.material):''}"></div>`+
+        `<div class="field"><label>色</label>`+
+          `<input id="filColor" type="text" placeholder="白 / #ffffff など" value="${f?escapeHtml(f.color):''}"></div>`+
+      `</div>`+
+      `<div class="field"><label>メモ</label>`+
+        `<input id="filNote" type="text" placeholder="残量など（任意）" value="${f?escapeHtml(f.note):''}"></div>`+
+      `<div class="modal-actions">`+
+        `<button class="btn ghost" id="filFormCancel">やめる</button>`+
+        `<button class="btn" id="filFormSave">${f?'保存':'追加'}</button>`+
+      `</div>`+
+    `</div>`;
+  $('filFormCancel').onclick=()=>{ $('filFormArea').innerHTML=''; };
+  $('filFormSave').onclick=()=>saveFilament(f? f.id : null, isShared);
+  $('filLabel').focus();
+}
+
+async function saveFilament(id, isShared){
+  const label=($('filLabel').value||'').trim();
+  if(!label){ toast('フィラメント名を入力してください', true); return; }
+  const payload={
+    label:label,
+    material:($('filMaterial').value||'').trim(),
+    color:($('filColor').value||'').trim(),
+    note:($('filNote').value||'').trim()
+  };
+  const btn=$('filFormSave');
+  btn.disabled=true; btn.textContent='保存中…';
+  try{
+    if(id){
+      await api(Object.assign({action:'updateFilament', id:id}, payload));
+    }else{
+      await api(Object.assign({action:'addFilament', owner: isShared ? '' : state.currentUser}, payload));
+    }
+    $('filFormArea').innerHTML='';
+    await loadFilaments();
+    renderFilLists();
+    renderFilamentSelect();
+    toast(id?'保存しました':'追加しました');
+  }catch(e){
+    toast(e.message, true);
+    btn.disabled=false; btn.textContent=id?'保存':'追加';
+  }
+}
+
+async function deleteFilament(id){
+  const f=filamentById(id);
+  if(!confirm(`「${f?f.label:''}」を削除しますか？`)) return;
+  try{
+    await api({action:'deleteFilament', id:id});
+    await loadFilaments();
+    renderFilLists();
+    renderFilamentSelect();
+    toast('削除しました');
+  }catch(e){
+    toast(e.message, true);
+  }
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
