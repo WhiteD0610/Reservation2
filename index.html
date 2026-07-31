@@ -256,6 +256,22 @@
     font-size:14px;text-align:center;font-variant-numeric:tabular-nums;font-family:inherit;
   }
   .admin-lim.changed{border-color:var(--accent);background:var(--accent-soft);}
+  .admin-dates{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);}
+  .admin-sec-label{display:block;font-size:12px;color:var(--ink-soft);font-weight:600;margin-bottom:6px;}
+  .date-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .date-ctl input[type=date]{
+    flex:1 1 auto;min-width:150px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;
+    font-size:14px;background:#fff;color:var(--ink);font-family:inherit;
+  }
+  .ov-item{
+    display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);
+    border-radius:8px;margin-bottom:6px;background:#fff;font-size:13px;
+  }
+  .ov-item .ov-date{font-variant-numeric:tabular-nums;font-weight:600;flex:0 0 auto;}
+  .ov-mode{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;flex:0 0 auto;}
+  .ov-mode.open{color:var(--free);background:var(--free-bg);}
+  .ov-mode.lock{color:var(--full);background:var(--full-bg);}
+  .ov-item .icon-btn{margin-left:auto;}
 </style>
 </head>
 <body>
@@ -389,6 +405,16 @@
     </div>
     <div class="hint" style="margin-bottom:10px;">下は予約者ごとの累計予約時間と、予約できる枠数の上限です。上限を変えたら「保存」を押してください。空欄にすると既定値（<span id="adminDefault">20</span>枠）に戻ります。</div>
     <div id="adminList"></div>
+    <div class="admin-dates">
+      <label class="admin-sec-label">予約日の個別設定</label>
+      <div class="hint" style="margin:0 0 8px;">未開放の日を先に解放したり、解放中の日を再ロックできます。指定は全員に反映されます。</div>
+      <div class="date-ctl">
+        <input id="ovDate" type="date">
+        <button class="btn ghost sm" id="ovOpenBtn">解放</button>
+        <button class="btn ghost sm" id="ovLockBtn">再ロック</button>
+      </div>
+      <div id="ovList" style="margin-top:10px;"></div>
+    </div>
     <div class="modal-actions" style="margin-top:12px;">
       <button class="btn ghost" id="adminModalClose">閉じる</button>
       <button class="btn" id="adminSaveBtn">保存</button>
@@ -400,7 +426,7 @@
 /* ============================================================
    設定: デプロイした GAS ウェブアプリの URL(/exec) をここに貼る
    ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyxVR36PvYJA93-BbucOx6aCVOkNFi9CaEwEST-z3A9Eu0BzxFb64kMnC4yJcmtkEKF/exec';
+const GAS_URL = 'ここにGASウェブアプリのURL(/exec)を貼る';
 
 /* ---- API 呼び出し ---- */
 async function api(payload){
@@ -418,7 +444,7 @@ async function api(payload){
 const state = {
   viewYear:0, viewMonth:0,
   monthCounts:{}, slotsPerDay:0,
-  windowStart:null, windowEnd:null, serverToday:null,
+  windowStart:null, windowEnd:null, serverToday:null, openDates:[],
   machines:[], openHour:0, closeHour:24, maxHours:2,
   users:[],
   ownFilaments:[], sharedFilaments:[], sharedWithMe:[],
@@ -429,7 +455,8 @@ const state = {
   dayReservations:[],
   selectedHours:[],
   adminSeq:[],         // 機械ボタンのクリック履歴（隠しコマンド判定用）
-  adminPass:''         // 認証済みの管理者パスワードを一時保持
+  adminPass:'',        // 認証済みの管理者パスワードを一時保持
+  adminOverrides:{}    // 予約日の個別設定
 };
 
 const DOW = ['日','月','火','水','木','金','土'];
@@ -506,6 +533,8 @@ async function init(){
   $('adminGateExec').onclick=submitAdminGate;
   $('adminModalClose').onclick=()=>$('adminModal').classList.add('hidden');
   $('adminSaveBtn').onclick=saveAdminLimits;
+  $('ovOpenBtn').onclick=()=>applyOverride('open');
+  $('ovLockBtn').onclick=()=>applyOverride('lock');
 
   const now=new Date();
   state.viewYear=now.getFullYear();
@@ -658,6 +687,7 @@ async function loadMonth(){
     state.windowStart=data.windowStart||null;
     state.windowEnd=data.windowEnd||null;
     state.serverToday=data.today||null;
+    state.openDates=data.openDates||[];
   }catch(e){
     toast(e.message, true);
   }
@@ -687,10 +717,11 @@ function renderCalendar(){
   const days=new Date(y,m+1,0).getDate();
   const today=state.serverToday||todayLocal();
   const winEnd=state.windowEnd, winStart=state.windowStart;
+  const openSet=new Set(state.openDates||[]);
 
   const note=$('windowNote');
   if(winStart&&winEnd){
-    note.textContent=`受付中の期間：${mdLabel(winStart)} 〜 ${mdLabel(winEnd)}`;
+    note.textContent=`基本の受付期間：${mdLabel(winStart)} 〜 ${mdLabel(winEnd)}`;
     note.classList.remove('hidden');
   }else{
     note.classList.add('hidden');
@@ -701,7 +732,8 @@ function renderCalendar(){
   for(let d=1;d<=days;d++){
     const ds=ymd(y,m,d);
     const isPast = ds < today;
-    const isLocked = winEnd && ds > winEnd;
+    const isOpen = openSet.has(ds);
+    const isLocked = !isPast && !isOpen;
     const isSel = ds===state.selectedDate;
     let inner=`<span class="num">${d}</span>`;
     if(isPast){
@@ -713,7 +745,7 @@ function renderCalendar(){
       inner+=`<span class="mark ${mk.cls}">${mk.ch}</span>`;
     }
     const cls = isPast ? ' past' : (isLocked ? ' locked' : '');
-    const selectable = !isPast && !isLocked;
+    const selectable = !isPast && isOpen;
     html+=`<div class="day${cls}${isSel?' sel':''}" `+
           `${selectable?`data-date="${ds}"`:`data-locked="${isLocked?1:0}"`}>${inner}</div>`;
   }
@@ -722,7 +754,7 @@ function renderCalendar(){
     el.onclick=()=>selectDate(el.getAttribute('data-date'));
   });
   $('calBody').querySelectorAll('.day[data-locked="1"]').forEach(el=>{
-    el.onclick=()=>toast('この期間はまだ予約受付が始まっていません');
+    el.onclick=()=>toast('この日はまだ予約受付が開放されていません');
   });
 }
 
@@ -1251,6 +1283,50 @@ function renderAdminList(d){
       el.classList.toggle('changed', el.value !== el.getAttribute('data-orig'));
     };
   });
+
+  // 予約日の個別設定
+  state.adminOverrides = d.overrides || {};
+  if(state.serverToday) $('ovDate').min = state.serverToday;
+  renderOvList();
+}
+
+/* 個別設定の一覧 */
+function renderOvList(){
+  const ov=state.adminOverrides||{};
+  const keys=Object.keys(ov).filter(k=>ov[k]).sort();
+  const el=$('ovList');
+  if(keys.length===0){
+    el.innerHTML='<div class="empty-note">個別設定はありません（すべて自動）。</div>';
+    return;
+  }
+  el.innerHTML=keys.map(dt=>{
+    const mode=ov[dt];
+    const label=mode==='open'?'解放中':'ロック中';
+    return `<div class="ov-item">`+
+      `<span class="ov-date">${escapeHtml(dt)}</span>`+
+      `<span class="ov-mode ${mode}">${label}</span>`+
+      `<button class="icon-btn" data-ovauto="${escapeHtml(dt)}">自動に戻す</button>`+
+    `</div>`;
+  }).join('');
+  el.querySelectorAll('[data-ovauto]').forEach(b=>{
+    b.onclick=()=>applyOverride('auto', b.getAttribute('data-ovauto'));
+  });
+}
+
+/* 解放/再ロック/自動に戻す を適用 */
+async function applyOverride(mode, dateArg){
+  const date = dateArg || $('ovDate').value;
+  if(!date){ toast('日付を選んでください', true); return; }
+  try{
+    const d=await api({action:'setDateOverride', password:state.adminPass, date:date, mode:mode});
+    state.adminOverrides = d.overrides || {};
+    renderOvList();
+    toast(mode==='auto'?'自動に戻しました':(mode==='open'?'解放しました':'再ロックしました'));
+    await loadMonth();  // カレンダーにも反映
+    if(!dateArg) $('ovDate').value='';
+  }catch(e){
+    toast(e.message, true);
+  }
 }
 
 async function saveAdminLimits(){
