@@ -241,6 +241,21 @@
   .spin{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;}
   @keyframes sp{to{transform:rotate(360deg);}}
   .hidden{display:none !important;}
+
+  /* --- 管理者ページ --- */
+  .admin-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .admin-table th{
+    text-align:left;font-size:11px;color:var(--ink-soft);font-weight:600;
+    padding:6px 8px;border-bottom:1px solid var(--line);
+  }
+  .admin-table td{padding:8px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  .admin-table td.num{font-variant-numeric:tabular-nums;color:var(--ink-soft);text-align:right;white-space:nowrap;}
+  .admin-name{font-weight:600;}
+  .admin-lim{
+    width:70px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;
+    font-size:14px;text-align:center;font-variant-numeric:tabular-nums;font-family:inherit;
+  }
+  .admin-lim.changed{border-color:var(--accent);background:var(--accent-soft);}
 </style>
 </head>
 <body>
@@ -349,11 +364,43 @@
 
 <div id="toast"></div>
 
+<!-- 管理者パスワード入力 -->
+<div id="adminGate" class="modal-overlay hidden">
+  <div class="modal">
+    <h3>管理者ページ</h3>
+    <div class="field">
+      <label for="adminPass">管理者パスワード</label>
+      <input id="adminPass" type="password" placeholder="パスワード" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="adminGateClose">閉じる</button>
+      <button class="btn" id="adminGateExec">開く</button>
+    </div>
+  </div>
+</div>
+
+<!-- 管理者ページ本体 -->
+<div id="adminModal" class="modal-overlay hidden">
+  <div class="modal wide">
+    <h3>管理者ページ</h3>
+    <div class="field" style="margin-bottom:14px;">
+      <label for="adminMaxHours">連続予約数の上限（時間・全員共通）</label>
+      <input id="adminMaxHours" class="admin-lim" type="number" min="1" inputmode="numeric" data-orig="" style="width:90px;">
+    </div>
+    <div class="hint" style="margin-bottom:10px;">下は予約者ごとの累計予約時間と、予約できる枠数の上限です。上限を変えたら「保存」を押してください。空欄にすると既定値（<span id="adminDefault">20</span>枠）に戻ります。</div>
+    <div id="adminList"></div>
+    <div class="modal-actions" style="margin-top:12px;">
+      <button class="btn ghost" id="adminModalClose">閉じる</button>
+      <button class="btn" id="adminSaveBtn">保存</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ============================================================
    設定: デプロイした GAS ウェブアプリの URL(/exec) をここに貼る
    ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyxVR36PvYJA93-BbucOx6aCVOkNFi9CaEwEST-z3A9Eu0BzxFb64kMnC4yJcmtkEKF/exec';
+const GAS_URL = 'ここにGASウェブアプリのURL(/exec)を貼る';
 
 /* ---- API 呼び出し ---- */
 async function api(payload){
@@ -380,7 +427,9 @@ const state = {
   selectedDate:null,
   selectedMachine:null,
   dayReservations:[],
-  selectedHours:[]
+  selectedHours:[],
+  adminSeq:[],         // 機械ボタンのクリック履歴（隠しコマンド判定用）
+  adminPass:''         // 認証済みの管理者パスワードを一時保持
 };
 
 const DOW = ['日','月','火','水','木','金','土'];
@@ -453,6 +502,10 @@ async function init(){
   $('cancelModalClose').onclick=closeCancelModal;
   $('cancelModalExec').onclick=execCancel;
   $('cancelModal').addEventListener('click', e=>{ if(e.target.id==='cancelModal') closeCancelModal(); });
+  $('adminGateClose').onclick=()=>$('adminGate').classList.add('hidden');
+  $('adminGateExec').onclick=submitAdminGate;
+  $('adminModalClose').onclick=()=>$('adminModal').classList.add('hidden');
+  $('adminSaveBtn').onclick=saveAdminLimits;
 
   const now=new Date();
   state.viewYear=now.getFullYear();
@@ -687,17 +740,30 @@ function selectDate(ds){
 
 /* ---- 機械タブ ---- */
 function renderMachineTabs(){
-  $('machineTabs').innerHTML = state.machines.map(mc=>
-    `<button class="tab${mc.key===state.selectedMachine?' sel':''}" data-mc="${mc.key}">${escapeHtml(mc.label)}</button>`
+  $('machineTabs').innerHTML = state.machines.map((mc,idx)=>
+    `<button class="tab${mc.key===state.selectedMachine?' sel':''}" data-mc="${mc.key}" data-idx="${idx}">${escapeHtml(mc.label)}</button>`
   ).join('');
   $('machineTabs').querySelectorAll('.tab').forEach(el=>{
     el.onclick=()=>{
+      recordAdminSeq(Number(el.getAttribute('data-idx')));
       state.selectedMachine=el.getAttribute('data-mc');
       state.selectedHours=[];
       renderMachineTabs();
       if(state.selectedDate) loadDay();
     };
   });
+}
+
+/* 隠しコマンド: 機械ボタンを左から B,B,A,C,A（=位置 1,1,0,2,0）でタップ */
+const ADMIN_CODE=[1,1,0,2,0];
+function recordAdminSeq(idx){
+  state.adminSeq.push(idx);
+  if(state.adminSeq.length>ADMIN_CODE.length) state.adminSeq.shift();
+  if(state.adminSeq.length===ADMIN_CODE.length &&
+     state.adminSeq.every((k,i)=>k===ADMIN_CODE[i])){
+    state.adminSeq=[];
+    openAdminGate();
+  }
 }
 
 /* ---- 指定日・機械の予約状況 ---- */
@@ -1128,6 +1194,100 @@ async function deleteFilament(id){
   }catch(e){
     toast(e.message, true);
   }
+}
+
+/* ============================================================
+   管理者ページ
+   ============================================================ */
+function openAdminGate(){
+  $('adminPass').value='';
+  $('adminGate').classList.remove('hidden');
+  setTimeout(()=>$('adminPass').focus(),50);
+}
+
+async function submitAdminGate(){
+  const pw=($('adminPass').value||'');
+  if(!pw){ toast('パスワードを入力してください', true); return; }
+  const btn=$('adminGateExec');
+  btn.disabled=true; btn.textContent='確認中…';
+  try{
+    const d=await api({action:'adminData', password:pw});
+    state.adminPass=pw;
+    $('adminGate').classList.add('hidden');
+    renderAdminList(d);
+    $('adminModal').classList.remove('hidden');
+  }catch(e){
+    toast(e.message, true);
+  }
+  btn.disabled=false; btn.textContent='開く';
+}
+
+function renderAdminList(d){
+  $('adminDefault').textContent = d.defaultMax;
+  const mh=$('adminMaxHours');
+  mh.value = d.maxHours;
+  mh.setAttribute('data-orig', String(d.maxHours));
+  mh.classList.remove('changed');
+  mh.oninput=()=>{ mh.classList.toggle('changed', mh.value !== mh.getAttribute('data-orig')); };
+  const rows = (d.users||[]).map(u=>
+    `<tr>`+
+      `<td class="admin-name">${escapeHtml(u.name)}</td>`+
+      `<td class="num">${u.totalHours}時間</td>`+
+      `<td class="num">${u.activeSlots}枠</td>`+
+      `<td><input class="admin-lim" type="number" min="0" inputmode="numeric" `+
+        `data-name="${escapeHtml(u.name)}" data-orig="${u.maxSlots}" value="${u.maxSlots}"></td>`+
+    `</tr>`
+  ).join('');
+  $('adminList').innerHTML =
+    (d.users&&d.users.length)
+    ? `<table class="admin-table"><thead><tr>`+
+        `<th>予約者</th><th style="text-align:right;">累計</th>`+
+        `<th style="text-align:right;">使用中</th><th>上限(枠)</th>`+
+      `</tr></thead><tbody>${rows}</tbody></table>`
+    : `<div class="empty-note">usersシートに予約者が登録されていません。</div>`;
+
+  $('adminList').querySelectorAll('.admin-lim').forEach(el=>{
+    el.oninput=()=>{
+      el.classList.toggle('changed', el.value !== el.getAttribute('data-orig'));
+    };
+  });
+}
+
+async function saveAdminLimits(){
+  const payload={action:'setUserLimits', password:state.adminPass, limits:{}};
+  let changed=false;
+  $('adminList').querySelectorAll('.admin-lim').forEach(el=>{
+    const name=el.getAttribute('data-name');
+    const v=el.value.trim();
+    if(v !== el.getAttribute('data-orig')){
+      payload.limits[name]= v==='' ? 0 : Number(v);
+      changed=true;
+    }
+  });
+  // 連続予約数
+  const mh=$('adminMaxHours');
+  if(mh.value.trim() !== mh.getAttribute('data-orig')){
+    const n=Number(mh.value);
+    if(!n || n<1){ toast('連続予約数は1以上で入力してください', true); return; }
+    payload.maxHours=n;
+    changed=true;
+  }
+  if(!changed){ toast('変更はありません'); return; }
+  const btn=$('adminSaveBtn');
+  btn.disabled=true; btn.textContent='保存中…';
+  try{
+    await api(payload);
+    toast('保存しました');
+    // 再取得して最新表示に
+    const d=await api({action:'adminData', password:state.adminPass});
+    renderAdminList(d);
+    // 連続予約数はこのセッションにも即反映
+    if(d.maxHours) state.maxHours=d.maxHours;
+    refreshQuota();
+  }catch(e){
+    toast(e.message, true);
+  }
+  btn.disabled=false; btn.textContent='保存';
 }
 
 window.addEventListener('DOMContentLoaded', init);
