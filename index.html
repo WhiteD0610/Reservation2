@@ -105,11 +105,12 @@
   .tab.sel{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
 
   /* --- 時間枠グリッド --- */
-  .slots{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
-  @media(max-width:480px){ .slots{grid-template-columns:repeat(3,1fr);} }
+  .slots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+  @media(max-width:480px){ .slots{grid-template-columns:repeat(3,minmax(0,1fr));} }
   .slot{
     border:1px solid var(--line);border-radius:10px;background:#fff;
     padding:9px 4px;text-align:center;cursor:pointer;position:relative;font-variant-numeric:tabular-nums;
+    min-width:0;overflow:hidden;
   }
   .slot .t{font-size:14px;font-weight:600;}
   .slot .s{font-size:11px;color:var(--ink-soft);margin-top:1px;}
@@ -120,22 +121,22 @@
   .slot.taken .t{color:var(--full);}
   .slot.taken .s{color:var(--full);}
   .slot .who{
-    font-size:10px;color:var(--ink-soft);margin-top:2px;
-    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-size:10px;color:var(--ink-soft);margin-top:2px;line-height:1.25;
+    max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-word;
   }
   .slot.taken .who{color:#a24039;}
   .slot .fil{
-    font-size:9px;color:#b07a74;margin-top:1px;
-    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-size:9px;color:#b07a74;margin-top:1px;line-height:1.25;
+    max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-word;
   }
   .slot.disabled{opacity:.4;cursor:default;}
 
   /* --- フィラメント選択（写真つきカード） --- */
-  .fpick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
-  @media(max-width:520px){ .fpick-grid{grid-template-columns:repeat(3,1fr);} }
+  .fpick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+  @media(max-width:520px){ .fpick-grid{grid-template-columns:repeat(3,minmax(0,1fr));} }
   .fpick{
     border:1px solid var(--line);border-radius:10px;background:#fff;padding:6px;
-    cursor:pointer;text-align:center;position:relative;overflow:hidden;
+    cursor:pointer;text-align:center;position:relative;overflow:hidden;min-width:0;
   }
   .fpick.sel{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent) inset;}
   .fpick.busy{opacity:.45;cursor:default;}
@@ -426,7 +427,7 @@
 /* ============================================================
    設定: デプロイした GAS ウェブアプリの URL(/exec) をここに貼る
    ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyxVR36PvYJA93-BbucOx6aCVOkNFi9CaEwEST-z3A9Eu0BzxFb64kMnC4yJcmtkEKF/exec';
+const GAS_URL = 'ここにGASウェブアプリのURL(/exec)を貼る';
 
 /* ---- API 呼び出し ---- */
 async function api(payload){
