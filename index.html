@@ -427,7 +427,7 @@
 /* ============================================================
    設定: デプロイした GAS ウェブアプリの URL(/exec) をここに貼る
    ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyxVR36PvYJA93-BbucOx6aCVOkNFi9CaEwEST-z3A9Eu0BzxFb64kMnC4yJcmtkEKF/exec';
+const GAS_URL = 'ここにGASウェブアプリのURL(/exec)を貼る';
 
 /* ---- API 呼び出し ---- */
 async function api(payload){
@@ -541,43 +541,39 @@ async function init(){
   state.viewYear=now.getFullYear();
   state.viewMonth=now.getMonth();
 
-  // --- カレンダー・設定・利用者一覧を同時並行で取得（直列待ちをなくす） ---
+  // --- 設定・カレンダー・利用者一覧を1回の通信でまとめて取得 ---
   const month = monthStr(state.viewYear, state.viewMonth);
   $('monthLabel').textContent = state.viewYear+'年 '+(state.viewMonth+1)+'月';
   $('calLoading').classList.remove('hidden');
 
-  const pMonth = api({action:'getMonth', month:month}).catch(e=>({__err:e}));
-  const pCfg   = api({action:'config'}).catch(e=>({__err:e}));
-  const pUsers = api({action:'listUsers'}).catch(e=>({__err:e}));
-
-  // 1) カレンダーを最優先で描画
-  const md = await pMonth;
-  $('calLoading').classList.add('hidden');
-  if(!md.__err){
-    state.monthCounts=md.counts||{};
-    state.slotsPerDay=md.slotsPerDay||0;
-    state.windowStart=md.windowStart||null;
-    state.windowEnd=md.windowEnd||null;
-    state.serverToday=md.today||null;
-    state.openDates=md.openDates||[];
-    renderCalendar();
-  }else{
-    toast('混み状況の取得に失敗しました。再読み込みしてください。', true);
-  }
-
-  // 2) 設定（機械タブ）
-  const cfg = await pCfg;
-  if(cfg.__err){
+  let boot;
+  try{
+    boot = await api({action:'bootstrap', month:month});
+  }catch(e){
+    $('calLoading').classList.add('hidden');
     toast('サーバに接続できません。URL設定を確認してください。', true);
     return;
   }
-  state.machines=cfg.machines; state.openHour=cfg.openHour;
-  state.closeHour=cfg.closeHour; state.maxHours=cfg.maxHours;
+  $('calLoading').classList.add('hidden');
+
+  // 1) カレンダー
+  const md = boot.month || {};
+  state.monthCounts=md.counts||{};
+  state.slotsPerDay=md.slotsPerDay||0;
+  state.windowStart=md.windowStart||null;
+  state.windowEnd=md.windowEnd||null;
+  state.serverToday=md.today||null;
+  state.openDates=md.openDates||[];
+  renderCalendar();
+
+  // 2) 設定（機械タブ）
+  const cfg = boot.config || {};
+  state.machines=cfg.machines||[]; state.openHour=cfg.openHour||0;
+  state.closeHour=cfg.closeHour||24; state.maxHours=cfg.maxHours||2;
   renderMachineTabs();
 
   // 3) 利用者一覧（記憶した予約者があれば裏でフィラメント等を読み込む）
-  const ud = await pUsers;
-  applyUsers(ud.__err ? {users:[]} : ud);
+  applyUsers({users: boot.users || []});
 }
 
 /* ---- 予約者一覧 ---- */
