@@ -288,6 +288,7 @@
   .checkin-box .btn.sm{margin-left:auto;}
   .checkin-msg{font-size:12px;color:var(--ink-soft);margin-top:7px;}
   .checkin-msg.done{color:var(--free);font-weight:600;}
+  .ci-lab{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);white-space:nowrap;}
 
   .scan-frame{
     position:relative;width:100%;aspect-ratio:1/1;max-height:60vh;background:#111;
@@ -425,6 +426,7 @@
     <div class="scan-status" id="scanStatus">カメラを起動しています…</div>
     <div class="modal-actions">
       <button class="btn ghost" id="scanModalClose">閉じる</button>
+      <button class="btn hidden" id="scanGeoRetry">現在地を取得</button>
     </div>
   </div>
 </div>
@@ -457,6 +459,15 @@
     <div class="hint" style="margin-bottom:10px;">下は予約者ごとの累計予約時間と、予約できる枠数の上限です。上限を変えたら「保存」を押してください。空欄にすると既定値（<span id="adminDefault">20</span>枠）に戻ります。</div>
     <div id="adminList"></div>
     <div class="admin-dates">
+      <label class="admin-sec-label">チェックイン特典の設定</label>
+      <div class="hint" style="margin:0 0 8px;">全員に共通で適用されます。保有上限を下げても、すでに持っている枠は減りません（上限を下回るまで新たに付与されなくなります）。</div>
+      <div class="date-ctl">
+        <label class="ci-lab">何日で <input id="adminCiNeed" class="admin-lim" type="number" min="1" inputmode="numeric" data-orig=""> 日</label>
+        <label class="ci-lab">もらえる枠 <input id="adminCiBonus" class="admin-lim" type="number" min="1" inputmode="numeric" data-orig=""> 枠</label>
+        <label class="ci-lab">保有上限 <input id="adminCiCap" class="admin-lim" type="number" min="0" inputmode="numeric" data-orig=""> 枠</label>
+      </div>
+    </div>
+    <div class="admin-dates">
       <label class="admin-sec-label">予約日の個別設定</label>
       <div class="hint" style="margin:0 0 8px;">未開放の日を先に解放したり、解放中の日を再ロックできます。指定は全員に反映されます。</div>
       <div class="date-ctl">
@@ -477,7 +488,7 @@
 /* ============================================================
    設定: デプロイした GAS ウェブアプリの URL(/exec) をここに貼る
    ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyxVR36PvYJA93-BbucOx6aCVOkNFi9CaEwEST-z3A9Eu0BzxFb64kMnC4yJcmtkEKF/exec';
+const GAS_URL = 'ここにGASウェブアプリのURL(/exec)を貼る';
 
 /* ---- API 呼び出し ---- */
 async function api(payload){
@@ -586,6 +597,7 @@ async function init(){
   $('adminSaveBtn').onclick=saveAdminLimits;
   $('openScanBtn').onclick=openScanModal;
   $('scanModalClose').onclick=closeScanModal;
+  $('scanGeoRetry').onclick=retryGeo;
   $('scanModal').addEventListener('click', e=>{ if(e.target.id==='scanModal') closeScanModal(); });
   $('ovOpenBtn').onclick=()=>applyOverride('open');
   $('ovLockBtn').onclick=()=>applyOverride('lock');
@@ -667,9 +679,14 @@ async function refreshQuota(){
   if(!name){ el.classList.add('hidden'); return; }
   try{
     const d=await api({action:'quota', name:name});
-    el.innerHTML=`「${escapeHtml(name)}」さん：あと <b>${d.remaining}</b> 枠（${d.max}枠中 ${d.used}枠 使用中）`;
+    const bonus=Number(d.bonus)||0;
+    const baseRem=(d.baseRemaining===undefined) ? Number(d.remaining)||0 : Number(d.baseRemaining);
+    const total=baseRem+bonus;
+    el.innerHTML = bonus>0
+      ? `「${escapeHtml(name)}」さん：あと <b>${total}</b> 枠（特典 ${bonus} 枠＋通常 ${baseRem} 枠／特典から先に使われます）`
+      : `「${escapeHtml(name)}」さん：あと <b>${total}</b> 枠（${d.base||d.max}枠中 ${d.baseUsed||d.used}枠 使用中）`;
     el.classList.remove('hidden');
-    el.classList.toggle('zero', d.remaining<=0);
+    el.classList.toggle('zero', total<=0);
   }catch(e){
     el.classList.add('hidden');
   }
@@ -763,12 +780,18 @@ function renderCheckin(d){
   const need = Number(d.need) || CHECKIN_NEED;
   const bonus = Number(d.bonusSlots) || 12;
   const prog = Math.max(0, Math.min(need, Number(d.progress)||0));
+  const held = Number(d.bonusTotal)||0;
+  const cap = Number(d.bonusCap)||0;
   scan.need = need;
   $('checkinDots').innerHTML =
     Array.from({length:need}, (_,i)=>`<i class="${i<prog?'on':''}"></i>`).join('');
   const msg=$('checkinMsg');
   const rest = need - prog;
-  if(d.doneToday){
+
+  if(d.atCap){
+    msg.className='checkin-msg';
+    msg.textContent = `特典枠が保有上限（${cap}枠）に達しています。使うとまた貯められます。`;
+  }else if(d.doneToday){
     msg.className='checkin-msg done';
     msg.textContent = `今日はチェックイン済みです（あと${rest}日で+${bonus}枠）`;
   }else{
@@ -776,8 +799,7 @@ function renderCheckin(d){
     msg.textContent = `今日はまだです。あと${rest}日で予約枠が${bonus}枠もらえます。`;
   }
   $('openScanBtn').disabled = !!d.doneToday;
-  const total = Number(d.bonusTotal)||0;
-  if(total>0) msg.textContent += `／これまでの獲得: ${total}枠`;
+  if(held>0) msg.textContent += `／保有中の特典: ${held}枠`;
 }
 
 /* ---- スキャナ ---- */
@@ -787,10 +809,32 @@ function scanStatus(text, isErr){
   el.className='scan-status'+(isErr?' err':'');
 }
 
+function showGeoRetry(){ $('scanGeoRetry').classList.remove('hidden'); }
+function hideGeoRetry(){ $('scanGeoRetry').classList.add('hidden'); }
+
+/* ボタンのタップから位置情報を取り直す。
+   iOS Safari はタップ起点でないと許可済みでも拒否するため、この導線が必要。 */
+async function retryGeo(){
+  const btn=$('scanGeoRetry');
+  btn.disabled=true;
+  scanStatus('現在地を確認中…');
+  geo.pos=null; geo.at=0;
+  try{
+    await getPosition(0);
+    hideGeoRetry();
+    scanStatus('現在地を確認しました。QRコードを枠内に写してください。');
+    if(scan.stream && !scan.raf && !scan.busy) scan.raf=requestAnimationFrame(scanTick);
+  }catch(e){
+    scanStatus(e.message, true);
+  }
+  btn.disabled=false;
+}
+
 async function openScanModal(){
   if(!currentUser()){ toast('先に予約者を選んでください。', true); return; }
   $('scanModal').classList.remove('hidden');
   scan.busy=false;
+  hideGeoRetry();
   scanStatus('カメラを起動しています…');
 
   if(!window.isSecureContext){
@@ -801,10 +845,17 @@ async function openScanModal(){
     scanStatus('この端末ではカメラを使えません。', true);
     return;
   }
+
+  // iOS Safari は「タップ直後」でないと位置情報の要求を拒否する。
+  // await をまたぐとタップの有効期間が切れるので、
+  // カメラと位置情報の要求はここで“同時に”投げてしまう。
+  const streamP = navigator.mediaDevices.getUserMedia({
+    video:{ facingMode:{ ideal:'environment' } }, audio:false
+  });
+  getPosition(120000).catch(()=>{ showGeoRetry(); });
+
   try{
-    scan.stream = await navigator.mediaDevices.getUserMedia({
-      video:{ facingMode:{ ideal:'environment' } }, audio:false
-    });
+    scan.stream = await streamP;
   }catch(e){
     scanStatus('カメラを使えませんでした（権限またはHTTPS未対応）。', true);
     return;
@@ -812,9 +863,6 @@ async function openScanModal(){
   const v=$('scanVideo');
   v.srcObject=scan.stream;
   try{ await v.play(); }catch(e){}
-
-  // カメラの許可が終わってから位置情報を要求する（ダイアログが重ならないように）
-  getPosition(120000).catch(()=>{});
 
   // 読み取りエンジン: 標準APIがあれば優先、無ければjsQRを読み込む
   try{
@@ -898,7 +946,11 @@ async function submitCheckin(token){
     scanStatus('現在地を確認中…');
     pos = await getPosition(120000);
   }catch(e){
-    retryScan(e.message);
+    // タップ起点でないと弾かれる端末があるので、ボタンからやり直してもらう
+    scan.busy=false;
+    cancelAnimationFrame(scan.raf); scan.raf=0;
+    scanStatus(e.message + '（下の「現在地を取得」を押してください）', true);
+    showGeoRetry();
     return;
   }
 
@@ -1274,6 +1326,7 @@ async function doReserve(){
     await loadDay();
     await loadMonth();
     refreshQuota();
+    refreshCheckin();
   }catch(e){
     toast(e.message, true);
     await loadDay();
@@ -1319,6 +1372,7 @@ async function execCancel(){
     await loadDay();
     await loadMonth();
     refreshQuota();
+    refreshCheckin();
   }catch(e){
     toast(e.message, true);
   }
@@ -1620,7 +1674,7 @@ function renderAdminList(d){
     (d.users&&d.users.length)
     ? `<table class="admin-table"><thead><tr>`+
         `<th>予約者</th><th style="text-align:right;">累計</th>`+
-        `<th style="text-align:right;">使用中</th><th style="text-align:right;">特典</th><th>上限(枠)</th>`+
+        `<th style="text-align:right;">使用中</th><th style="text-align:right;">保有特典</th><th>上限(枠)</th>`+
       `</tr></thead><tbody>${rows}</tbody></table>`
     : `<div class="empty-note">usersシートに予約者が登録されていません。</div>`;
 
@@ -1628,6 +1682,16 @@ function renderAdminList(d){
     el.oninput=()=>{
       el.classList.toggle('changed', el.value !== el.getAttribute('data-orig'));
     };
+  });
+
+  // チェックイン特典の設定
+  const ci = d.checkin || {};
+  [['adminCiNeed', ci.need], ['adminCiBonus', ci.bonus], ['adminCiCap', ci.cap]].forEach(([id,val])=>{
+    const el=$(id);
+    el.value = (val===undefined||val===null) ? '' : val;
+    el.setAttribute('data-orig', String(el.value));
+    el.classList.remove('changed');
+    el.oninput=()=>{ el.classList.toggle('changed', el.value !== el.getAttribute('data-orig')); };
   });
 
   // 予約日の個別設定
@@ -1694,6 +1758,22 @@ async function saveAdminLimits(){
     payload.maxHours=n;
     changed=true;
   }
+  // チェックイン特典の設定
+  const ciMap={ adminCiNeed:'need', adminCiBonus:'bonus', adminCiCap:'cap' };
+  const ci={};
+  let ciChanged=false;
+  for(const id in ciMap){
+    const el=$(id);
+    if(el.value.trim() === el.getAttribute('data-orig')) continue;
+    const n=Number(el.value);
+    const min = (ciMap[id]==='cap') ? 0 : 1;
+    if(el.value.trim()==='' || isNaN(n) || n<min){
+      toast(`特典の設定は${min}以上の数値で入力してください`, true); return;
+    }
+    ci[ciMap[id]]=n; ciChanged=true;
+  }
+  if(ciChanged){ payload.checkin=ci; changed=true; }
+
   if(!changed){ toast('変更はありません'); return; }
   const btn=$('adminSaveBtn');
   btn.disabled=true; btn.textContent='保存中…';
@@ -1706,6 +1786,7 @@ async function saveAdminLimits(){
     // 連続予約数はこのセッションにも即反映
     if(d.maxHours) state.maxHours=d.maxHours;
     refreshQuota();
+    refreshCheckin();
   }catch(e){
     toast(e.message, true);
   }
