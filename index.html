@@ -273,6 +273,33 @@
   .ov-mode.open{color:var(--free);background:var(--free-bg);}
   .ov-mode.lock{color:var(--full);background:var(--full-bg);}
   .ov-item .icon-btn{margin-left:auto;}
+
+  /* --- QRチェックイン --- */
+  .checkin-box{
+    margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);
+  }
+  .checkin-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .checkin-label{font-size:12px;color:var(--ink-soft);font-weight:600;}
+  .checkin-dots{display:flex;gap:5px;margin-left:2px;}
+  .checkin-dots i{
+    width:14px;height:14px;border-radius:50%;border:1px solid var(--line);background:#fff;display:block;
+  }
+  .checkin-dots i.on{background:var(--accent);border-color:var(--accent);}
+  .checkin-box .btn.sm{margin-left:auto;}
+  .checkin-msg{font-size:12px;color:var(--ink-soft);margin-top:7px;}
+  .checkin-msg.done{color:var(--free);font-weight:600;}
+
+  .scan-frame{
+    position:relative;width:100%;aspect-ratio:1/1;max-height:60vh;background:#111;
+    border-radius:10px;overflow:hidden;margin-bottom:10px;
+  }
+  .scan-frame video{width:100%;height:100%;object-fit:cover;display:block;}
+  .scan-frame .reticle{
+    position:absolute;inset:18%;border:2px solid rgba(255,255,255,.85);border-radius:12px;
+    box-shadow:0 0 0 9999px rgba(0,0,0,.35);
+  }
+  .scan-status{font-size:13px;color:var(--ink-soft);margin-bottom:10px;text-align:center;}
+  .scan-status.err{color:var(--full);}
 </style>
 </head>
 <body>
@@ -289,6 +316,14 @@
       <select id="userSelect"><option value="">読み込み中…</option></select>
     </div>
     <div id="quotaNote" class="quota-note hidden"></div>
+    <div id="checkinBox" class="checkin-box hidden">
+      <div class="checkin-top">
+        <span class="checkin-label">チェックイン</span>
+        <div class="checkin-dots" id="checkinDots"></div>
+        <button class="btn ghost sm" id="openScanBtn">QRを読み取る</button>
+      </div>
+      <div class="checkin-msg" id="checkinMsg"></div>
+    </div>
     <div class="row-between">
       <span class="hint" style="margin:0;">フィラメントの登録・編集はこちら →</span>
       <button class="btn ghost sm" id="openFilBtn">フィラメント管理</button>
@@ -379,6 +414,21 @@
   </div>
 </div>
 
+<!-- QRチェックイン用モーダル -->
+<div id="scanModal" class="modal-overlay hidden">
+  <div class="modal">
+    <h3>QRチェックイン</h3>
+    <div class="scan-frame" id="scanFrame">
+      <video id="scanVideo" playsinline muted autoplay></video>
+      <div class="reticle"></div>
+    </div>
+    <div class="scan-status" id="scanStatus">カメラを起動しています…</div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="scanModalClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <!-- 管理者パスワード入力 -->
@@ -427,7 +477,7 @@
 /* ============================================================
    設定: デプロイした GAS ウェブアプリの URL(/exec) をここに貼る
    ============================================================ */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyxVR36PvYJA93-BbucOx6aCVOkNFi9CaEwEST-z3A9Eu0BzxFb64kMnC4yJcmtkEKF/exec';
+const GAS_URL = 'ここにGASウェブアプリのURL(/exec)を貼る';
 
 /* ---- API 呼び出し ---- */
 async function api(payload){
@@ -534,6 +584,9 @@ async function init(){
   $('adminGateExec').onclick=submitAdminGate;
   $('adminModalClose').onclick=()=>$('adminModal').classList.add('hidden');
   $('adminSaveBtn').onclick=saveAdminLimits;
+  $('openScanBtn').onclick=openScanModal;
+  $('scanModalClose').onclick=closeScanModal;
+  $('scanModal').addEventListener('click', e=>{ if(e.target.id==='scanModal') closeScanModal(); });
   $('ovOpenBtn').onclick=()=>applyOverride('open');
   $('ovLockBtn').onclick=()=>applyOverride('lock');
 
@@ -603,7 +656,7 @@ async function onUserChange(){
   const name=currentUser();
   if(name) localStorage.setItem('resv_user', name);
   state.selectedFilamentId='';
-  await Promise.all([refreshQuota(), loadFilaments()]);
+  await Promise.all([refreshQuota(), loadFilaments(), refreshCheckin()]);
   renderFilPicker();
 }
 
@@ -620,6 +673,271 @@ async function refreshQuota(){
   }catch(e){
     el.classList.add('hidden');
   }
+}
+
+/* ============================================================
+   QRチェックイン
+   1日1回まで記録でき、累計5日ごとに予約枠が12枠増える。
+   判定と付与はすべてGAS側で行う（端末側の記録は信用しない）。
+   ============================================================ */
+const CHECKIN_NEED = 5;      // 表示用。実際の判定はサーバ側の値を使う
+const JSQR_CDN = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+
+const scan = { stream:null, detector:null, raf:0, busy:false, need:CHECKIN_NEED };
+
+/* 現在地。研究室にいるかどうかの判定はサーバ側で行う（座標は公開ファイルに書かない）。
+   屋内では高精度測位(GPS)が返ってこないことがあるので、
+   高精度 → 通常精度(Wi-Fi/基地局) の順に試し、必ず時間内に打ち切る。 */
+const geo = { pos:null, at:0, inflight:null };
+
+function askPosition(highAccuracy, timeoutMs){
+  return new Promise((resolve,reject)=>{
+    let done=false;
+    // ダイアログ表示中はブラウザのtimeoutが動かないことがあるので自前でも打ち切る
+    const guard=setTimeout(()=>{
+      if(!done){ done=true; reject(new Error('timeout')); }
+    }, timeoutMs+2000);
+    navigator.geolocation.getCurrentPosition(
+      p=>{
+        if(done) return;
+        done=true; clearTimeout(guard);
+        resolve({ lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy });
+      },
+      e=>{
+        if(done) return;
+        done=true; clearTimeout(guard);
+        reject(e);
+      },
+      { enableHighAccuracy:highAccuracy, timeout:timeoutMs, maximumAge:0 }
+    );
+  });
+}
+
+function getPosition(maxAgeMs){
+  if(geo.pos && (Date.now()-geo.at) < maxAgeMs) return Promise.resolve(geo.pos);
+  if(geo.inflight) return geo.inflight;   // 同時に複数回要求しない
+  if(!navigator.geolocation){
+    return Promise.reject(new Error('この端末では位置情報を取得できません。'));
+  }
+  if(!window.isSecureContext){
+    return Promise.reject(new Error('httpsで開いてください（位置情報が使えません）。'));
+  }
+
+  geo.inflight = (async ()=>{
+    try{
+      let p;
+      try{
+        p = await askPosition(true, 8000);        // まずGPS優先で8秒
+      }catch(e1){
+        if(e1 && e1.code===1) throw e1;           // 拒否されたら再試行しない
+        p = await askPosition(false, 10000);      // だめならWi-Fi測位で10秒
+      }
+      geo.pos=p; geo.at=Date.now();
+      return p;
+    }catch(e){
+      if(e && e.code===1){
+        throw new Error('位置情報の使用を許可してください（設定 → Safari → 位置情報）。');
+      }
+      throw new Error('現在地を取得できませんでした。窓際に移動してもう一度お試しください。');
+    }finally{
+      geo.inflight=null;
+    }
+  })();
+  return geo.inflight;
+}
+
+async function refreshCheckin(){
+  const name=currentUser();
+  const box=$('checkinBox');
+  if(!name){ box.classList.add('hidden'); return; }
+  try{
+    const d=await api({action:'checkinStatus', name:name});
+    renderCheckin(d);
+    box.classList.remove('hidden');
+  }catch(e){
+    box.classList.add('hidden');
+  }
+}
+
+function renderCheckin(d){
+  const need = Number(d.need) || CHECKIN_NEED;
+  const bonus = Number(d.bonusSlots) || 12;
+  const prog = Math.max(0, Math.min(need, Number(d.progress)||0));
+  scan.need = need;
+  $('checkinDots').innerHTML =
+    Array.from({length:need}, (_,i)=>`<i class="${i<prog?'on':''}"></i>`).join('');
+  const msg=$('checkinMsg');
+  const rest = need - prog;
+  if(d.doneToday){
+    msg.className='checkin-msg done';
+    msg.textContent = `今日はチェックイン済みです（あと${rest}日で+${bonus}枠）`;
+  }else{
+    msg.className='checkin-msg';
+    msg.textContent = `今日はまだです。あと${rest}日で予約枠が${bonus}枠もらえます。`;
+  }
+  $('openScanBtn').disabled = !!d.doneToday;
+  const total = Number(d.bonusTotal)||0;
+  if(total>0) msg.textContent += `／これまでの獲得: ${total}枠`;
+}
+
+/* ---- スキャナ ---- */
+function scanStatus(text, isErr){
+  const el=$('scanStatus');
+  el.textContent=text;
+  el.className='scan-status'+(isErr?' err':'');
+}
+
+async function openScanModal(){
+  if(!currentUser()){ toast('先に予約者を選んでください。', true); return; }
+  $('scanModal').classList.remove('hidden');
+  scan.busy=false;
+  scanStatus('カメラを起動しています…');
+
+  if(!window.isSecureContext){
+    scanStatus('httpsで開いてください。カメラと位置情報が使えません。', true);
+    return;
+  }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    scanStatus('この端末ではカメラを使えません。', true);
+    return;
+  }
+  try{
+    scan.stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:{ ideal:'environment' } }, audio:false
+    });
+  }catch(e){
+    scanStatus('カメラを使えませんでした（権限またはHTTPS未対応）。', true);
+    return;
+  }
+  const v=$('scanVideo');
+  v.srcObject=scan.stream;
+  try{ await v.play(); }catch(e){}
+
+  // カメラの許可が終わってから位置情報を要求する（ダイアログが重ならないように）
+  getPosition(120000).catch(()=>{});
+
+  // 読み取りエンジン: 標準APIがあれば優先、無ければjsQRを読み込む
+  try{
+    if('BarcodeDetector' in window){
+      const fmts = await window.BarcodeDetector.getSupportedFormats();
+      if(fmts.includes('qr_code')) scan.detector = new window.BarcodeDetector({formats:['qr_code']});
+    }
+    if(!scan.detector) await loadJsQR();
+  }catch(e){
+    scanStatus('読み取り機能を用意できませんでした。通信環境を確認してください。', true);
+    return;
+  }
+  scanStatus('QRコードを枠内に写してください。');
+  scan.raf = requestAnimationFrame(scanTick);
+}
+
+function loadJsQR(){
+  if(window.jsQR) return Promise.resolve();
+  return new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src=JSQR_CDN;
+    s.onload=()=>resolve();
+    s.onerror=()=>reject(new Error('jsQR load failed'));
+    document.head.appendChild(s);
+  });
+}
+
+let scanCanvas=null;
+async function scanTick(){
+  const v=$('scanVideo');
+  if(!scan.stream || scan.busy){ return; }
+  if(v.readyState >= 2){
+    let text='';
+    try{
+      if(scan.detector){
+        const codes = await scan.detector.detect(v);
+        if(codes && codes.length) text = codes[0].rawValue || '';
+      }else if(window.jsQR){
+        if(!scanCanvas) scanCanvas=document.createElement('canvas');
+        const w=Math.min(v.videoWidth, 640);
+        const h=Math.round(v.videoHeight * (w/v.videoWidth)) || 480;
+        scanCanvas.width=w; scanCanvas.height=h;
+        const ctx=scanCanvas.getContext('2d', {willReadFrequently:true});
+        ctx.drawImage(v,0,0,w,h);
+        const img=ctx.getImageData(0,0,w,h);
+        const r=window.jsQR(img.data, w, h, {inversionAttempts:'dontInvert'});
+        if(r && r.data) text=r.data;
+      }
+    }catch(e){ /* 1フレーム失敗は無視 */ }
+    if(text){ submitCheckin(text); return; }
+  }
+  scan.raf = requestAnimationFrame(scanTick);
+}
+
+function stopScan(){
+  cancelAnimationFrame(scan.raf);
+  scan.raf=0;
+  if(scan.stream){
+    scan.stream.getTracks().forEach(t=>t.stop());
+    scan.stream=null;
+  }
+  const v=$('scanVideo');
+  if(v) v.srcObject=null;
+  scan.detector=null;
+}
+
+function closeScanModal(){
+  stopScan();
+  $('scanModal').classList.add('hidden');
+}
+
+async function submitCheckin(token){
+  if(scan.busy) return;
+  if(!token){ return; }
+  const name=currentUser();
+  if(!name){ toast('先に予約者を選んでください。', true); return; }
+  scan.busy=true;
+
+  let pos=null;
+  try{
+    scanStatus('現在地を確認中…');
+    pos = await getPosition(120000);
+  }catch(e){
+    retryScan(e.message);
+    return;
+  }
+
+  scanStatus('確認中…');
+  try{
+    const d=await api({
+      action:'checkin', name:name, token:token,
+      lat:pos.lat, lng:pos.lng, acc:pos.acc
+    });
+    stopScan();
+    $('scanModal').classList.add('hidden');
+    if(d.granted){
+      toast(`チェックイン完了！ 予約枠が${d.granted}枠増えました。`);
+    }else if(d.already){
+      toast('今日はすでにチェックイン済みです。');
+    }else{
+      const rest=(Number(d.need)||scan.need)-(Number(d.progress)||0);
+      toast(`チェックイン完了。あと${rest}日で枠がもらえます。`);
+    }
+    renderCheckin(d);
+    $('checkinBox').classList.remove('hidden');
+    await refreshQuota();
+  }catch(e){
+    retryScan(e.message || 'チェックインに失敗しました。');
+    return;
+  }
+  scan.busy=false;
+}
+
+/* 失敗メッセージを出してから読み取りを再開する */
+function retryScan(msg){
+  scanStatus(msg, true);
+  setTimeout(()=>{
+    scan.busy=false;
+    if(scan.stream){
+      scanStatus('QRコードを枠内に写してください。');
+      scan.raf=requestAnimationFrame(scanTick);
+    }
+  }, 2500);
 }
 
 /* ---- フィラメント一覧 ---- */
@@ -1293,6 +1611,7 @@ function renderAdminList(d){
       `<td class="admin-name">${escapeHtml(u.name)}</td>`+
       `<td class="num">${u.totalHours}時間</td>`+
       `<td class="num">${u.activeSlots}枠</td>`+
+      `<td class="num">${u.bonusSlots ? '+'+u.bonusSlots : '—'}</td>`+
       `<td><input class="admin-lim" type="number" min="0" inputmode="numeric" `+
         `data-name="${escapeHtml(u.name)}" data-orig="${u.maxSlots}" value="${u.maxSlots}"></td>`+
     `</tr>`
@@ -1301,7 +1620,7 @@ function renderAdminList(d){
     (d.users&&d.users.length)
     ? `<table class="admin-table"><thead><tr>`+
         `<th>予約者</th><th style="text-align:right;">累計</th>`+
-        `<th style="text-align:right;">使用中</th><th>上限(枠)</th>`+
+        `<th style="text-align:right;">使用中</th><th style="text-align:right;">特典</th><th>上限(枠)</th>`+
       `</tr></thead><tbody>${rows}</tbody></table>`
     : `<div class="empty-note">usersシートに予約者が登録されていません。</div>`;
 
