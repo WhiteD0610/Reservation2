@@ -60,6 +60,18 @@
   .quota-note.zero{color:var(--full);background:var(--full-bg);font-weight:600;}
   .quota-note b{color:var(--accent);}
   .quota-note.zero b{color:var(--full);}
+  .pending-item{
+    border:1px solid var(--taken);background:var(--full-bg);border-radius:10px;
+    padding:10px;margin-bottom:8px;
+  }
+  .pending-info{font-size:13px;margin-bottom:8px;}
+  .pending-info b{color:var(--full);}
+  .pending-input{display:flex;gap:8px;align-items:center;}
+  .pending-input input{
+    flex:1 1 auto;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;
+    font-size:15px;background:#fff;color:var(--ink);font-family:inherit;
+  }
+  .pending-input .btn{flex:0 0 auto;width:auto;padding:9px 16px;}
   .row-between{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-top:10px;}
 
   /* --- カレンダー --- */
@@ -273,34 +285,6 @@
   .ov-mode.open{color:var(--free);background:var(--free-bg);}
   .ov-mode.lock{color:var(--full);background:var(--full-bg);}
   .ov-item .icon-btn{margin-left:auto;}
-
-  /* --- QRチェックイン --- */
-  .checkin-box{
-    margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);
-  }
-  .checkin-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
-  .checkin-label{font-size:12px;color:var(--ink-soft);font-weight:600;}
-  .checkin-dots{display:flex;gap:5px;margin-left:2px;}
-  .checkin-dots i{
-    width:14px;height:14px;border-radius:50%;border:1px solid var(--line);background:#fff;display:block;
-  }
-  .checkin-dots i.on{background:var(--accent);border-color:var(--accent);}
-  .checkin-box .btn.sm{margin-left:auto;}
-  .checkin-msg{font-size:12px;color:var(--ink-soft);margin-top:7px;}
-  .checkin-msg.done{color:var(--free);font-weight:600;}
-  .ci-lab{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);white-space:nowrap;}
-
-  .scan-frame{
-    position:relative;width:100%;aspect-ratio:1/1;max-height:60vh;background:#111;
-    border-radius:10px;overflow:hidden;margin-bottom:10px;
-  }
-  .scan-frame video{width:100%;height:100%;object-fit:cover;display:block;}
-  .scan-frame .reticle{
-    position:absolute;inset:18%;border:2px solid rgba(255,255,255,.85);border-radius:12px;
-    box-shadow:0 0 0 9999px rgba(0,0,0,.35);
-  }
-  .scan-status{font-size:13px;color:var(--ink-soft);margin-bottom:10px;text-align:center;}
-  .scan-status.err{color:var(--full);}
 </style>
 </head>
 <body>
@@ -317,18 +301,17 @@
       <select id="userSelect"><option value="">読み込み中…</option></select>
     </div>
     <div id="quotaNote" class="quota-note hidden"></div>
-    <div id="checkinBox" class="checkin-box hidden">
-      <div class="checkin-top">
-        <span class="checkin-label">チェックイン</span>
-        <div class="checkin-dots" id="checkinDots"></div>
-        <button class="btn ghost sm" id="openScanBtn">QRを読み取る</button>
-      </div>
-      <div class="checkin-msg" id="checkinMsg"></div>
-    </div>
     <div class="row-between">
       <span class="hint" style="margin:0;">フィラメントの登録・編集はこちら →</span>
       <button class="btn ghost sm" id="openFilBtn">フィラメント管理</button>
     </div>
+  </section>
+
+  <!-- 記録が必要な予約（未記録があるときだけ表示） -->
+  <section class="card hidden" id="pendingCard">
+    <h2 style="color:var(--full);">使用量の記録が必要です</h2>
+    <div class="hint" style="margin:0 0 10px;">使い終わった予約の使用量(g)を記録してください。記録するまで新しい予約はできません。</div>
+    <div id="pendingList"></div>
   </section>
 
   <!-- カレンダー -->
@@ -415,22 +398,6 @@
   </div>
 </div>
 
-<!-- QRチェックイン用モーダル -->
-<div id="scanModal" class="modal-overlay hidden">
-  <div class="modal">
-    <h3>QRチェックイン</h3>
-    <div class="scan-frame" id="scanFrame">
-      <video id="scanVideo" playsinline muted autoplay></video>
-      <div class="reticle"></div>
-    </div>
-    <div class="scan-status" id="scanStatus">カメラを起動しています…</div>
-    <div class="modal-actions">
-      <button class="btn ghost" id="scanModalClose">閉じる</button>
-      <button class="btn hidden" id="scanGeoRetry">現在地を取得</button>
-    </div>
-  </div>
-</div>
-
 <div id="toast"></div>
 
 <!-- 管理者パスワード入力 -->
@@ -458,15 +425,6 @@
     </div>
     <div class="hint" style="margin-bottom:10px;">下は予約者ごとの累計予約時間と、予約できる枠数の上限です。上限を変えたら「保存」を押してください。空欄にすると既定値（<span id="adminDefault">20</span>枠）に戻ります。</div>
     <div id="adminList"></div>
-    <div class="admin-dates">
-      <label class="admin-sec-label">チェックイン特典の設定</label>
-      <div class="hint" style="margin:0 0 8px;">全員に共通で適用されます。保有上限を下げても、すでに持っている枠は減りません（上限を下回るまで新たに付与されなくなります）。</div>
-      <div class="date-ctl">
-        <label class="ci-lab">何日で <input id="adminCiNeed" class="admin-lim" type="number" min="1" inputmode="numeric" data-orig=""> 日</label>
-        <label class="ci-lab">もらえる枠 <input id="adminCiBonus" class="admin-lim" type="number" min="1" inputmode="numeric" data-orig=""> 枠</label>
-        <label class="ci-lab">保有上限 <input id="adminCiCap" class="admin-lim" type="number" min="0" inputmode="numeric" data-orig=""> 枠</label>
-      </div>
-    </div>
     <div class="admin-dates">
       <label class="admin-sec-label">予約日の個別設定</label>
       <div class="hint" style="margin:0 0 8px;">未開放の日を先に解放したり、解放中の日を再ロックできます。指定は全員に反映されます。</div>
@@ -510,6 +468,7 @@ const state = {
   machines:[], openHour:0, closeHour:24, maxHours:2,
   users:[],
   ownFilaments:[], sharedFilaments:[], sharedWithMe:[],
+  pending:[],           // 使用量が未記録の完了予約
   filamentBusy:{},
   selectedFilamentId:'',
   selectedDate:null,
@@ -595,10 +554,6 @@ async function init(){
   $('adminGateExec').onclick=submitAdminGate;
   $('adminModalClose').onclick=()=>$('adminModal').classList.add('hidden');
   $('adminSaveBtn').onclick=saveAdminLimits;
-  $('openScanBtn').onclick=openScanModal;
-  $('scanModalClose').onclick=closeScanModal;
-  $('scanGeoRetry').onclick=retryGeo;
-  $('scanModal').addEventListener('click', e=>{ if(e.target.id==='scanModal') closeScanModal(); });
   $('ovOpenBtn').onclick=()=>applyOverride('open');
   $('ovLockBtn').onclick=()=>applyOverride('lock');
 
@@ -668,8 +623,59 @@ async function onUserChange(){
   const name=currentUser();
   if(name) localStorage.setItem('resv_user', name);
   state.selectedFilamentId='';
-  await Promise.all([refreshQuota(), loadFilaments(), refreshCheckin()]);
+  await Promise.all([refreshQuota(), loadFilaments(), loadPending()]);
   renderFilPicker();
+}
+
+/* 未記録の完了予約を取得して表示 */
+async function loadPending(){
+  const name=currentUser();
+  if(!name){ state.pending=[]; renderPending(); return; }
+  try{
+    const d=await api({action:'pendingRecords', name:name});
+    state.pending=d.pending||[];
+  }catch(e){
+    state.pending=[];
+  }
+  renderPending();
+}
+
+function renderPending(){
+  const card=$('pendingCard'), list=$('pendingList');
+  if(!state.pending.length){ card.classList.add('hidden'); list.innerHTML=''; return; }
+  list.innerHTML = state.pending.map(p=>{
+    const [yy,mm,dd]=p.date.split('-');
+    const range = p.hours.length
+      ? `${pad(Math.min(...p.hours))}:00〜${pad(Math.max(...p.hours)+1)}:00` : '';
+    return `<div class="pending-item">`+
+      `<div class="pending-info"><b>${Number(mm)}月${Number(dd)}日</b> ${range} ／ `+
+        `${escapeHtml(machineLabel(p.machine))}`+
+        (p.filamentLabel?` ／ ${escapeHtml(p.filamentLabel)}`:'')+`</div>`+
+      `<div class="pending-input">`+
+        `<input type="number" min="0" step="0.1" inputmode="decimal" placeholder="使用量 (g)" data-g="${escapeHtml(p.groupId)}">`+
+        `<button class="btn" data-rec="${escapeHtml(p.groupId)}">記録</button>`+
+      `</div></div>`;
+  }).join('');
+  card.classList.remove('hidden');
+  list.querySelectorAll('[data-rec]').forEach(b=>{
+    b.onclick=()=>recordUsage(b.getAttribute('data-rec'));
+  });
+}
+
+async function recordUsage(gid){
+  const inp=$('pendingList').querySelector(`input[data-g="${gid}"]`);
+  const v=inp ? inp.value.trim() : '';
+  if(v===''){ toast('使用量(g)を入力してください', true); if(inp) inp.focus(); return; }
+  const grams=Number(v);
+  if(!(grams>=0)){ toast('使用量は0以上の数値で入力してください', true); return; }
+  try{
+    await api({action:'recordUsage', name:currentUser(), groupId:gid, grams:grams});
+    toast('記録しました');
+    await Promise.all([loadPending(), loadFilaments()]);
+    renderFilPicker();
+  }catch(e){
+    toast(e.message, true);
+  }
 }
 
 /* ---- 残り予約可能枠 ---- */
@@ -679,317 +685,12 @@ async function refreshQuota(){
   if(!name){ el.classList.add('hidden'); return; }
   try{
     const d=await api({action:'quota', name:name});
-    const bonus=Number(d.bonus)||0;
-    const baseRem=(d.baseRemaining===undefined) ? Number(d.remaining)||0 : Number(d.baseRemaining);
-    const total=baseRem+bonus;
-    el.innerHTML = bonus>0
-      ? `「${escapeHtml(name)}」さん：あと <b>${total}</b> 枠（特典 ${bonus} 枠＋通常 ${baseRem} 枠／特典から先に使われます）`
-      : `「${escapeHtml(name)}」さん：あと <b>${total}</b> 枠（${d.base||d.max}枠中 ${d.baseUsed||d.used}枠 使用中）`;
+    el.innerHTML=`「${escapeHtml(name)}」さん：あと <b>${d.remaining}</b> 枠（${d.max}枠中 ${d.used}枠 使用中）`;
     el.classList.remove('hidden');
-    el.classList.toggle('zero', total<=0);
+    el.classList.toggle('zero', d.remaining<=0);
   }catch(e){
     el.classList.add('hidden');
   }
-}
-
-/* ============================================================
-   QRチェックイン
-   1日1回まで記録でき、累計5日ごとに予約枠が12枠増える。
-   判定と付与はすべてGAS側で行う（端末側の記録は信用しない）。
-   ============================================================ */
-const CHECKIN_NEED = 5;      // 表示用。実際の判定はサーバ側の値を使う
-const JSQR_CDN = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
-
-const scan = { stream:null, detector:null, raf:0, busy:false, need:CHECKIN_NEED };
-
-/* 現在地。研究室にいるかどうかの判定はサーバ側で行う（座標は公開ファイルに書かない）。
-   屋内では高精度測位(GPS)が返ってこないことがあるので、
-   高精度 → 通常精度(Wi-Fi/基地局) の順に試し、必ず時間内に打ち切る。 */
-const geo = { pos:null, at:0, inflight:null };
-
-function askPosition(highAccuracy, timeoutMs){
-  return new Promise((resolve,reject)=>{
-    let done=false;
-    // ダイアログ表示中はブラウザのtimeoutが動かないことがあるので自前でも打ち切る
-    const guard=setTimeout(()=>{
-      if(!done){ done=true; reject(new Error('timeout')); }
-    }, timeoutMs+2000);
-    navigator.geolocation.getCurrentPosition(
-      p=>{
-        if(done) return;
-        done=true; clearTimeout(guard);
-        resolve({ lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy });
-      },
-      e=>{
-        if(done) return;
-        done=true; clearTimeout(guard);
-        reject(e);
-      },
-      { enableHighAccuracy:highAccuracy, timeout:timeoutMs, maximumAge:0 }
-    );
-  });
-}
-
-function getPosition(maxAgeMs){
-  if(geo.pos && (Date.now()-geo.at) < maxAgeMs) return Promise.resolve(geo.pos);
-  if(geo.inflight) return geo.inflight;   // 同時に複数回要求しない
-  if(!navigator.geolocation){
-    return Promise.reject(new Error('この端末では位置情報を取得できません。'));
-  }
-  if(!window.isSecureContext){
-    return Promise.reject(new Error('httpsで開いてください（位置情報が使えません）。'));
-  }
-
-  geo.inflight = (async ()=>{
-    try{
-      let p;
-      try{
-        p = await askPosition(true, 8000);        // まずGPS優先で8秒
-      }catch(e1){
-        if(e1 && e1.code===1) throw e1;           // 拒否されたら再試行しない
-        p = await askPosition(false, 10000);      // だめならWi-Fi測位で10秒
-      }
-      geo.pos=p; geo.at=Date.now();
-      return p;
-    }catch(e){
-      if(e && e.code===1){
-        throw new Error('位置情報の使用を許可してください（設定 → Safari → 位置情報）。');
-      }
-      throw new Error('現在地を取得できませんでした。窓際に移動してもう一度お試しください。');
-    }finally{
-      geo.inflight=null;
-    }
-  })();
-  return geo.inflight;
-}
-
-async function refreshCheckin(){
-  const name=currentUser();
-  const box=$('checkinBox');
-  if(!name){ box.classList.add('hidden'); return; }
-  try{
-    const d=await api({action:'checkinStatus', name:name});
-    renderCheckin(d);
-    box.classList.remove('hidden');
-  }catch(e){
-    box.classList.add('hidden');
-  }
-}
-
-function renderCheckin(d){
-  const need = Number(d.need) || CHECKIN_NEED;
-  const bonus = Number(d.bonusSlots) || 12;
-  const prog = Math.max(0, Math.min(need, Number(d.progress)||0));
-  const held = Number(d.bonusTotal)||0;
-  const cap = Number(d.bonusCap)||0;
-  scan.need = need;
-  $('checkinDots').innerHTML =
-    Array.from({length:need}, (_,i)=>`<i class="${i<prog?'on':''}"></i>`).join('');
-  const msg=$('checkinMsg');
-  const rest = need - prog;
-
-  if(d.atCap){
-    msg.className='checkin-msg';
-    msg.textContent = `特典枠が保有上限（${cap}枠）に達しています。使うとまた貯められます。`;
-  }else if(d.doneToday){
-    msg.className='checkin-msg done';
-    msg.textContent = `今日はチェックイン済みです（あと${rest}日で+${bonus}枠）`;
-  }else{
-    msg.className='checkin-msg';
-    msg.textContent = `今日はまだです。あと${rest}日で予約枠が${bonus}枠もらえます。`;
-  }
-  $('openScanBtn').disabled = !!d.doneToday;
-  if(held>0) msg.textContent += `／保有中の特典: ${held}枠`;
-}
-
-/* ---- スキャナ ---- */
-function scanStatus(text, isErr){
-  const el=$('scanStatus');
-  el.textContent=text;
-  el.className='scan-status'+(isErr?' err':'');
-}
-
-function showGeoRetry(){ $('scanGeoRetry').classList.remove('hidden'); }
-function hideGeoRetry(){ $('scanGeoRetry').classList.add('hidden'); }
-
-/* ボタンのタップから位置情報を取り直す。
-   iOS Safari はタップ起点でないと許可済みでも拒否するため、この導線が必要。 */
-async function retryGeo(){
-  const btn=$('scanGeoRetry');
-  btn.disabled=true;
-  scanStatus('現在地を確認中…');
-  geo.pos=null; geo.at=0;
-  try{
-    await getPosition(0);
-    hideGeoRetry();
-    scanStatus('現在地を確認しました。QRコードを枠内に写してください。');
-    if(scan.stream && !scan.raf && !scan.busy) scan.raf=requestAnimationFrame(scanTick);
-  }catch(e){
-    scanStatus(e.message, true);
-  }
-  btn.disabled=false;
-}
-
-async function openScanModal(){
-  if(!currentUser()){ toast('先に予約者を選んでください。', true); return; }
-  $('scanModal').classList.remove('hidden');
-  scan.busy=false;
-  hideGeoRetry();
-  scanStatus('カメラを起動しています…');
-
-  if(!window.isSecureContext){
-    scanStatus('httpsで開いてください。カメラと位置情報が使えません。', true);
-    return;
-  }
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    scanStatus('この端末ではカメラを使えません。', true);
-    return;
-  }
-
-  // iOS Safari は「タップ直後」でないと位置情報の要求を拒否する。
-  // await をまたぐとタップの有効期間が切れるので、
-  // カメラと位置情報の要求はここで“同時に”投げてしまう。
-  const streamP = navigator.mediaDevices.getUserMedia({
-    video:{ facingMode:{ ideal:'environment' } }, audio:false
-  });
-  getPosition(120000).catch(()=>{ showGeoRetry(); });
-
-  try{
-    scan.stream = await streamP;
-  }catch(e){
-    scanStatus('カメラを使えませんでした（権限またはHTTPS未対応）。', true);
-    return;
-  }
-  const v=$('scanVideo');
-  v.srcObject=scan.stream;
-  try{ await v.play(); }catch(e){}
-
-  // 読み取りエンジン: 標準APIがあれば優先、無ければjsQRを読み込む
-  try{
-    if('BarcodeDetector' in window){
-      const fmts = await window.BarcodeDetector.getSupportedFormats();
-      if(fmts.includes('qr_code')) scan.detector = new window.BarcodeDetector({formats:['qr_code']});
-    }
-    if(!scan.detector) await loadJsQR();
-  }catch(e){
-    scanStatus('読み取り機能を用意できませんでした。通信環境を確認してください。', true);
-    return;
-  }
-  scanStatus('QRコードを枠内に写してください。');
-  scan.raf = requestAnimationFrame(scanTick);
-}
-
-function loadJsQR(){
-  if(window.jsQR) return Promise.resolve();
-  return new Promise((resolve,reject)=>{
-    const s=document.createElement('script');
-    s.src=JSQR_CDN;
-    s.onload=()=>resolve();
-    s.onerror=()=>reject(new Error('jsQR load failed'));
-    document.head.appendChild(s);
-  });
-}
-
-let scanCanvas=null;
-async function scanTick(){
-  const v=$('scanVideo');
-  if(!scan.stream || scan.busy){ return; }
-  if(v.readyState >= 2){
-    let text='';
-    try{
-      if(scan.detector){
-        const codes = await scan.detector.detect(v);
-        if(codes && codes.length) text = codes[0].rawValue || '';
-      }else if(window.jsQR){
-        if(!scanCanvas) scanCanvas=document.createElement('canvas');
-        const w=Math.min(v.videoWidth, 640);
-        const h=Math.round(v.videoHeight * (w/v.videoWidth)) || 480;
-        scanCanvas.width=w; scanCanvas.height=h;
-        const ctx=scanCanvas.getContext('2d', {willReadFrequently:true});
-        ctx.drawImage(v,0,0,w,h);
-        const img=ctx.getImageData(0,0,w,h);
-        const r=window.jsQR(img.data, w, h, {inversionAttempts:'dontInvert'});
-        if(r && r.data) text=r.data;
-      }
-    }catch(e){ /* 1フレーム失敗は無視 */ }
-    if(text){ submitCheckin(text); return; }
-  }
-  scan.raf = requestAnimationFrame(scanTick);
-}
-
-function stopScan(){
-  cancelAnimationFrame(scan.raf);
-  scan.raf=0;
-  if(scan.stream){
-    scan.stream.getTracks().forEach(t=>t.stop());
-    scan.stream=null;
-  }
-  const v=$('scanVideo');
-  if(v) v.srcObject=null;
-  scan.detector=null;
-}
-
-function closeScanModal(){
-  stopScan();
-  $('scanModal').classList.add('hidden');
-}
-
-async function submitCheckin(token){
-  if(scan.busy) return;
-  if(!token){ return; }
-  const name=currentUser();
-  if(!name){ toast('先に予約者を選んでください。', true); return; }
-  scan.busy=true;
-
-  let pos=null;
-  try{
-    scanStatus('現在地を確認中…');
-    pos = await getPosition(120000);
-  }catch(e){
-    // タップ起点でないと弾かれる端末があるので、ボタンからやり直してもらう
-    scan.busy=false;
-    cancelAnimationFrame(scan.raf); scan.raf=0;
-    scanStatus(e.message + '（下の「現在地を取得」を押してください）', true);
-    showGeoRetry();
-    return;
-  }
-
-  scanStatus('確認中…');
-  try{
-    const d=await api({
-      action:'checkin', name:name, token:token,
-      lat:pos.lat, lng:pos.lng, acc:pos.acc
-    });
-    stopScan();
-    $('scanModal').classList.add('hidden');
-    if(d.granted){
-      toast(`チェックイン完了！ 予約枠が${d.granted}枠増えました。`);
-    }else if(d.already){
-      toast('今日はすでにチェックイン済みです。');
-    }else{
-      const rest=(Number(d.need)||scan.need)-(Number(d.progress)||0);
-      toast(`チェックイン完了。あと${rest}日で枠がもらえます。`);
-    }
-    renderCheckin(d);
-    $('checkinBox').classList.remove('hidden');
-    await refreshQuota();
-  }catch(e){
-    retryScan(e.message || 'チェックインに失敗しました。');
-    return;
-  }
-  scan.busy=false;
-}
-
-/* 失敗メッセージを出してから読み取りを再開する */
-function retryScan(msg){
-  scanStatus(msg, true);
-  setTimeout(()=>{
-    scan.busy=false;
-    if(scan.stream){
-      scanStatus('QRコードを枠内に写してください。');
-      scan.raf=requestAnimationFrame(scanTick);
-    }
-  }, 2500);
 }
 
 /* ---- フィラメント一覧 ---- */
@@ -1039,6 +740,7 @@ function fpickCard(f, zone){
       (badge?`<span class="fpick-badge">${escapeHtml(badge)}</span>`:'')+
       `<div class="fpick-name">${escapeHtml(filName(f))}</div>`+
       (f.note?`<div class="fpick-sub">${escapeHtml(f.note)}</div>`:'')+
+      ((f.remaining!=='' && f.remaining!=null)?`<div class="fpick-sub" style="${Number(f.remaining)<0?'color:var(--full);':''}">残 ${escapeHtml(String(f.remaining))}g</div>`:'')+
       (busy?`<div class="fpick-busy">同時間<br>使用中</div>`:'')+
     `</div>`;
 }
@@ -1303,6 +1005,7 @@ async function doReserve(){
   const pass=($('passInput').value||'');
   const fid=state.selectedFilamentId;
   if(!name){ toast('予約者を選んでください', true); return; }
+  if(state.pending.length){ toast('先に使い終わった予約の使用量を記録してください', true); $('pendingCard').scrollIntoView({behavior:'smooth'}); return; }
   if(state.selectedHours.length===0){ toast('時間枠を選んでください', true); return; }
   if(!fid){ toast('フィラメントを選んでください', true); return; }
   if(!pass){ toast('キャンセル用パスワードを入力してください', true); $('passInput').focus(); return; }
@@ -1326,7 +1029,6 @@ async function doReserve(){
     await loadDay();
     await loadMonth();
     refreshQuota();
-    refreshCheckin();
   }catch(e){
     toast(e.message, true);
     await loadDay();
@@ -1372,7 +1074,6 @@ async function execCancel(){
     await loadDay();
     await loadMonth();
     refreshQuota();
-    refreshCheckin();
   }catch(e){
     toast(e.message, true);
   }
@@ -1402,6 +1103,9 @@ async function openFilModal(){
 function filItemHtml(f, zone){
   const meta=[f.material,f.color,f.note].filter(Boolean).join(' / ');
   const sh=(f.sharers||[]).filter(Boolean);
+  const remHtml = (f.remaining!=='' && f.remaining!=null)
+    ? `<div class="fil-meta" style="${Number(f.remaining)<0?'color:var(--full);font-weight:600;':''}">残量 ${escapeHtml(String(f.remaining))}g${Number(f.remaining)<0?'（要補充）':''}</div>`
+    : '';
   const thumb = f.photo
     ? `<div class="fil-thumb"><img src="${f.photo}" alt=""></div>`
     : `<div class="fil-thumb"><span class="fil-chip" style="background:${escapeHtml(colorToCss(f.color))}"></span></div>`;
@@ -1410,6 +1114,7 @@ function filItemHtml(f, zone){
     `<div class="fil-body">`+
       `<div class="fil-name">${escapeHtml(filName(f))}</div>`+
       (meta?`<div class="fil-meta">${escapeHtml(meta)}</div>`:'')+
+      remHtml+
       (sh.length?`<div class="fil-meta" style="color:var(--accent);">共同利用：${escapeHtml(sh.join('・'))}</div>`:'')+
     `</div>`+
     `<div class="fil-acts">`+
@@ -1461,7 +1166,10 @@ function showFilForm(opt){
           `<input id="filColor" type="text" placeholder="白 / 黒 / #ff0000 など" value="${f?escapeHtml(f.color):''}"></div>`+
       `</div>`+
       `<div class="field"><label>メモ（任意）</label>`+
-        `<input id="filNote" type="text" placeholder="メーカー名・残量など" value="${f?escapeHtml(f.note):''}"></div>`+
+        `<input id="filNote" type="text" placeholder="メーカー名など" value="${f?escapeHtml(f.note):''}"></div>`+
+      `<div class="field"><label>残量（g・任意）</label>`+
+        `<input id="filRemaining" type="number" min="0" step="1" inputmode="numeric" placeholder="例）1000" value="${f&&f.remaining!==''&&f.remaining!=null?escapeHtml(String(f.remaining)):''}">`+
+        `<div class="hint">使用量を記録すると自動で減ります。補充したらここを直してください。</div></div>`+
       (isShared ? '' :
         `<div class="field"><label>共同利用者（任意）</label>`+
           `<div class="sharer-row">`+
@@ -1590,6 +1298,8 @@ async function saveFilament(id, isShared){
   if(!color){ toast('色を入力してください', true); $('filColor').focus(); return; }
 
   const payload={ material:material, color:color, note:note };
+  const remRaw=($('filRemaining').value||'').trim();
+  payload.remaining = remRaw==='' ? '' : Number(remRaw);
   if(!isShared) payload.sharers = formSharers;
   // 新規は常に写真を送る。編集は触ったときだけ送る（未変更なら既存を維持）
   if(!id || formPhotoTouched) payload.photo = formPhoto || '';
@@ -1665,7 +1375,6 @@ function renderAdminList(d){
       `<td class="admin-name">${escapeHtml(u.name)}</td>`+
       `<td class="num">${u.totalHours}時間</td>`+
       `<td class="num">${u.activeSlots}枠</td>`+
-      `<td class="num">${u.bonusSlots ? '+'+u.bonusSlots : '—'}</td>`+
       `<td><input class="admin-lim" type="number" min="0" inputmode="numeric" `+
         `data-name="${escapeHtml(u.name)}" data-orig="${u.maxSlots}" value="${u.maxSlots}"></td>`+
     `</tr>`
@@ -1674,7 +1383,7 @@ function renderAdminList(d){
     (d.users&&d.users.length)
     ? `<table class="admin-table"><thead><tr>`+
         `<th>予約者</th><th style="text-align:right;">累計</th>`+
-        `<th style="text-align:right;">使用中</th><th style="text-align:right;">保有特典</th><th>上限(枠)</th>`+
+        `<th style="text-align:right;">使用中</th><th>上限(枠)</th>`+
       `</tr></thead><tbody>${rows}</tbody></table>`
     : `<div class="empty-note">usersシートに予約者が登録されていません。</div>`;
 
@@ -1682,16 +1391,6 @@ function renderAdminList(d){
     el.oninput=()=>{
       el.classList.toggle('changed', el.value !== el.getAttribute('data-orig'));
     };
-  });
-
-  // チェックイン特典の設定
-  const ci = d.checkin || {};
-  [['adminCiNeed', ci.need], ['adminCiBonus', ci.bonus], ['adminCiCap', ci.cap]].forEach(([id,val])=>{
-    const el=$(id);
-    el.value = (val===undefined||val===null) ? '' : val;
-    el.setAttribute('data-orig', String(el.value));
-    el.classList.remove('changed');
-    el.oninput=()=>{ el.classList.toggle('changed', el.value !== el.getAttribute('data-orig')); };
   });
 
   // 予約日の個別設定
@@ -1758,22 +1457,6 @@ async function saveAdminLimits(){
     payload.maxHours=n;
     changed=true;
   }
-  // チェックイン特典の設定
-  const ciMap={ adminCiNeed:'need', adminCiBonus:'bonus', adminCiCap:'cap' };
-  const ci={};
-  let ciChanged=false;
-  for(const id in ciMap){
-    const el=$(id);
-    if(el.value.trim() === el.getAttribute('data-orig')) continue;
-    const n=Number(el.value);
-    const min = (ciMap[id]==='cap') ? 0 : 1;
-    if(el.value.trim()==='' || isNaN(n) || n<min){
-      toast(`特典の設定は${min}以上の数値で入力してください`, true); return;
-    }
-    ci[ciMap[id]]=n; ciChanged=true;
-  }
-  if(ciChanged){ payload.checkin=ci; changed=true; }
-
   if(!changed){ toast('変更はありません'); return; }
   const btn=$('adminSaveBtn');
   btn.disabled=true; btn.textContent='保存中…';
@@ -1786,7 +1469,6 @@ async function saveAdminLimits(){
     // 連続予約数はこのセッションにも即反映
     if(d.maxHours) state.maxHours=d.maxHours;
     refreshQuota();
-    refreshCheckin();
   }catch(e){
     toast(e.message, true);
   }
